@@ -46,7 +46,7 @@ class BaseHandler(object):
             finally:
                 del t, v, tb
 
-class REPLHandler(BaseHandler):
+class StdoutHandler(BaseHandler):
     terminator = '\n'
     def __init__(self, stream=None, format=None, level="DEBUG", **kwargs):
         if stream is None:
@@ -167,7 +167,7 @@ class LogRecord(object):
 
 class Logger(object):
     handler_class_map = {
-        'repl': REPLHandler,
+        'stdout': StdoutHandler,
         'fluent': FluentHandler
     }
     def __init__(self, name="", **kwargs):
@@ -229,4 +229,4 @@ class Logger(object):
     async def exception(self, message, *args, exc_info=True, **kwargs):
         await self.error(message, *args, exc_info=exc_info, **kwargs)
 
-logger = Logger("")
+logger = Logger("root")

@@ -1,0 +1,13 @@
+[log]
+    handlers = ["repl", "local_fluent"]
+
+    [log.repl]
+    handler_type = "repl"
+    level = "debug"
+    
+    [log.local_fluent]
+    handler_type = "fluent"
+    host = "127.0.0.1"
+    port = 24224
+    tag = "basepy"
+    level = "info"

@@ -8,6 +8,9 @@ with open('basepy/__init__.py', 'rb') as f:
     version = str(ast.literal_eval(_version_re.search(
         f.read().decode('utf-8')).group(1)))
 
+with open('README.md', 'rb') as f:
+    long_description = f.read().decode('utf-8')
+
 setup(
     name='basepy',
     version=version,
@@ -15,8 +18,8 @@ setup(
     license='MIT',
     author='Wei Zhuo',
     author_email='zeaphoo@qq.com',
-    description='A base library for python 3.6+ and asyncio',
-    long_description='Base library of python , include log, config, event, metric etc. ',
+    description='Base library of python 3.6+ and asyncio, include log, config, event, metric etc.',
+    long_description=long_description,
     packages=['basepy'],
     include_package_data=False,
     zip_safe=False,
@@ -28,7 +31,7 @@ setup(
         ],
     },
     classifiers=[
-        'Development Status :: 3 - Alpha',
+        'Development Status :: 4 - Beta',
         'Environment :: Web Environment',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: BSD License',
@@ -36,6 +39,7 @@ setup(
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
         'Topic :: Software Development :: Libraries :: Python Modules'
     ],
     entry_points='''

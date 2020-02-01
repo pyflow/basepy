@@ -1,8 +1,8 @@
 [log]
-    handlers = ["repl", "local_fluent"]
+    handlers = ["stdout", "local_fluent"]
 
-    [log.repl]
-    handler_type = "repl"
+    [log.stdout]
+    handler_type = "stdout"
     level = "debug"
     
     [log.local_fluent]

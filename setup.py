@@ -20,6 +20,7 @@ setup(
     author_email='zeaphoo@qq.com',
     description='Base library of python 3.6+ and asyncio, include log, config, event, metric etc.',
     long_description=long_description,
+    long_description_content_type="text/markdown",
     packages=['basepy'],
     include_package_data=False,
     zip_safe=False,
@@ -34,7 +35,7 @@ setup(
         'Development Status :: 4 - Beta',
         'Environment :: Web Environment',
         'Intended Audience :: Developers',
-        'License :: OSI Approved :: BSD License',
+        'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
@@ -42,6 +43,7 @@ setup(
         'Programming Language :: Python :: 3.7',
         'Topic :: Software Development :: Libraries :: Python Modules'
     ],
+    python_requires='>=3.6',
     entry_points='''
     '''
 )

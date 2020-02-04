@@ -1,6 +1,6 @@
 import re
 import ast
-from setuptools import setup
+from setuptools import setup, find_packages
 
 _version_re = re.compile(r'__version__\s+=\s+(.*)')
 
@@ -10,6 +10,9 @@ with open('basepy/__init__.py', 'rb') as f:
 
 with open('README.md', 'rb') as f:
     long_description = f.read().decode('utf-8')
+
+packages = ['basepy']
+packages.extend(map(lambda x: 'basepy.{}'.format(x), find_packages('basepy')))
 
 setup(
     name='basepy',
@@ -21,7 +24,7 @@ setup(
     description='Base library of python 3.6+ and asyncio, include log, config, event, metric etc.',
     long_description=long_description,
     long_description_content_type="text/markdown",
-    packages=['basepy'],
+    packages=packages,
     include_package_data=False,
     zip_safe=False,
     platforms='any',

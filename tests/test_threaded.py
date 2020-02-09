@@ -6,7 +6,7 @@ import time
 import weakref
 from contextlib import suppress
 from contextlib import contextmanager
-from async_timeout import timeout
+from basepy.timeout import timeout
 from concurrent.futures import ThreadPoolExecutor
 from basepy.threaded import threaded, threaded_separate, sync_wait_coroutine
 
@@ -18,7 +18,7 @@ except ImportError:
     contextvars = None
 
 
-#pytestmark = pytest.mark.catch_loop_exceptions
+pytestmark = pytest.mark.catch_loop_exceptions
 
 @pytest.fixture
 def timer():
@@ -61,7 +61,8 @@ def executor(loop: asyncio.AbstractEventLoop):
 async def test_threaded(threaded_decorator, timer):
     sleep = threaded_decorator(time.sleep)
 
-    async with timeout(5):
+    @timeout(5)
+    async def _test_threaded():
         with timer(1):
             await asyncio.gather(
                 sleep(1),
@@ -70,6 +71,7 @@ async def test_threaded(threaded_decorator, timer):
                 sleep(1),
                 sleep(1)
             )
+    await _test_threaded()
 
 
 async def test_threaded_exc(threaded_decorator):
@@ -77,7 +79,8 @@ async def test_threaded_exc(threaded_decorator):
     def worker():
         raise Exception
 
-    async with timeout(1):
+    @timeout(1)
+    async def _test_threaded_exc():
         number = 90
 
         done, _ = await asyncio.wait([worker() for _ in range(number)])
@@ -85,12 +88,14 @@ async def test_threaded_exc(threaded_decorator):
         for task in done:
             with pytest.raises(Exception):
                 task.result()
+    await _test_threaded_exc()
 
 
 async def test_simple(threaded_decorator, timer):
     sleep = threaded_decorator(time.sleep)
 
-    async with timeout(2):
+    @timeout(2)
+    async def _test_simple():
         with timer(1):
             await asyncio.gather(
                 sleep(1),
@@ -98,26 +103,7 @@ async def test_simple(threaded_decorator, timer):
                 sleep(1),
                 sleep(1),
             )
-
-
-async def test_threaded_generator(loop, timer):
-    def __arange(*args):
-        return (yield from range(*args))
-    
-    @threaded
-    def arange(*args):
-        return list(__arange(*args))
-
-    async with timeout(10):
-        count = 10
-
-        result = []
-        agen = await arange(count)
-        print(agen)
-        for item in agen:
-            result.append(item)
-
-        assert result == list(range(count))
+    await _test_simple()
 
 
 @pytest.mark.skipif(contextvars is None, reason="no contextvars support")

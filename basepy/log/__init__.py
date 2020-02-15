@@ -8,16 +8,29 @@ import platform
 import json
 from basepy.asynclib.async_fluent import AsyncFluentSender
 
-CRITICAL = 50
-FATAL = CRITICAL
-ERROR = 40
-WARNING = 30
-WARN = WARNING
-INFO = 20
-DEBUG = 10
-NOTSET = 0
-
 _start_time = time.time()
+
+class LoggerLevel:
+    CRITICAL = 50
+    ERROR = 40
+    WARNING = 30
+    INFO = 20
+    DEBUG = 10
+    NOTSET = 0
+    name_level_map = {
+        'CRITICAL': CRITICAL,
+        'FATAL': CRITICAL,
+        'ERROR': ERROR,
+        'WARN': WARNING,
+        'WARNING': WARNING,
+        'INFO': INFO,
+        'DEBUG': DEBUG,
+        'NOTSET': NOTSET,
+    }
+
+    @classmethod
+    def get_levelno(cls, name, default=0):
+        return cls.name_level_map.get(name.strip().upper(), default)
 
 class BaseHandler(object):
     def handle_error(self, record):
@@ -53,6 +66,9 @@ class StdoutHandler(BaseHandler):
             stream = sys.stdout
         self.stream = stream
         self.format_str = "[{created}] [{hostname}.{process}] [{level}] [{message}]"
+        self.level = level
+        self.levelno = LoggerLevel.get_levelno(self.level, 0)
+ 
 
     def flush(self):
         if self.stream and hasattr(self.stream, "flush"):
@@ -98,6 +114,7 @@ class FluentHandler(BaseHandler):
         self.port = port
         self.fluentsender = AsyncFluentSender(tag, host=host, port=port)
         self.level = level
+        self.levelno = LoggerLevel.get_levelno(self.level, 0)
 
     def flush(self):
         pass
@@ -113,16 +130,6 @@ class FluentHandler(BaseHandler):
         return '<%s %s(%s)>' % (self.__class__.__name__, self.tag, self.level)
 
 class LogRecord(object):
-    name_level_map = {
-        'CRITICAL': CRITICAL,
-        'FATAL': FATAL,
-        'ERROR': ERROR,
-        'WARN': WARNING,
-        'WARNING': WARNING,
-        'INFO': INFO,
-        'DEBUG': DEBUG,
-        'NOTSET': NOTSET,
-    }
     def __init__(self, name, level, 
                  msg, args, exc_info, sinfo=None, **kwargs):
         """
@@ -133,7 +140,7 @@ class LogRecord(object):
         self.msg = msg
         self.args = args
         self.levelname = level
-        self.levelno = self.name_level_map.get(level, 60)
+        self.levelno = LoggerLevel.get_levelno(level, 60)
         self.exc_info = exc_info
         self.exc_text = None      # used to cache the traceback text
         self.stack_info = sinfo
@@ -173,6 +180,7 @@ class Logger(object):
     def __init__(self, name="", **kwargs):
         self.name = name
         self.handlers = []
+        self.queue = None
         self.queued_handlers = []
         self.dev_mode = True
         self.hostname = platform.node()
@@ -190,22 +198,36 @@ class Logger(object):
     async def init_queue(self):
         self.queue = Queue()
 
-    def add(self, handler, format=None, queue=False, **kwargs):
+    def add(self, handler, level="DEBUG", format=None, queue=False, **kwargs):
         h_cls = self.handler_class_map.get(handler)
         if not h_cls:
             raise Exception('no handler class for {}'.format(handler))
-        h = h_cls(format=format, queue=queue, **kwargs)
+        h = h_cls(format=format, queue=queue, level=level, **kwargs)
         if queue:
             self.queued_handlers.append(h)
         else:
             self.handlers.append(h)
+    
+    def clear(self):
+        self.handlers = []
+        self.queued_handlers = []
+
+    def _filter_handlers(self, level):
+        levelno = LoggerLevel.get_levelno(level)
+        handlers = list(filter(lambda x: levelno >= x.levelno, self.handlers))
+        queued_handlers = list(filter(lambda x: levelno >= x.levelno, self.queued_handlers))
+        return handlers, queued_handlers
 
     async def log(self, level, message, args, kwargs):
+        handlers, queued_handlers = self._filter_handlers(level)
+        if len(handlers) + len(queued_handlers) == 0:
+            return None
+
         record = LogRecord(self.name, level, message, args, None, **kwargs)
         if len(self.handlers) > 0:
             for handler in self.handlers:
                 await handler.emit(record)
-        
+
         if len(self.queued_handlers) > 0:
             await self.queue.put(record)
 

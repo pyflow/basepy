@@ -68,7 +68,7 @@ class StdoutHandler(BaseHandler):
         self.format_str = "[{created}] [{hostname}.{process}] [{level}] [{message}]"
         self.level = level
         self.levelno = LoggerLevel.get_levelno(self.level, 0)
- 
+
 
     def flush(self):
         if self.stream and hasattr(self.stream, "flush"):
@@ -89,7 +89,12 @@ class StdoutHandler(BaseHandler):
             try:
                 return json.dumps(obj)
             except:
-                return repr(obj)
+                if hasattr(obj, 'to_json'):
+                    try:
+                        return obj.to_json()
+                    except:
+                        pass
+                raise Exception('Object can not covert to json or have `to_json` method.')
         data = record.to_dict()
         data['created'] = time.strftime("%Y-%m-%d %H:%M:%S %z", time.localtime(data['created']))
         msg = self.format_str.format(**data)
@@ -97,7 +102,7 @@ class StdoutHandler(BaseHandler):
         if extra:
             msg = ' '.join([msg, extra])
         return msg
-    
+
     def __repr__(self):
         level = ""
         name = getattr(self.stream, 'name', '')
@@ -130,7 +135,7 @@ class FluentHandler(BaseHandler):
         return '<%s %s(%s)>' % (self.__class__.__name__, self.tag, self.level)
 
 class LogRecord(object):
-    def __init__(self, name, level, 
+    def __init__(self, name, level,
                  msg, args, exc_info, sinfo=None, **kwargs):
         """
         Initialize a logging record with interesting information.
@@ -159,7 +164,7 @@ class LogRecord(object):
         if self.args:
             msg = msg % self.args
         return msg
-    
+
     def to_dict(self):
         return dict(
             name = self.name,
@@ -170,7 +175,7 @@ class LogRecord(object):
             message = self.get_message(),
             data = self.kwargs
         )
-    
+
 
 class Logger(object):
     handler_class_map = {
@@ -207,7 +212,7 @@ class Logger(object):
             self.queued_handlers.append(h)
         else:
             self.handlers.append(h)
-    
+
     def clear(self):
         self.handlers = []
         self.queued_handlers = []
@@ -235,7 +240,7 @@ class Logger(object):
     async def debug(self, message, *args, **kwargs):
         if self.dev_mode:
             await self.log('DEBUG', message, args, kwargs)
-    
+
     async def info(self, message, *args, **kwargs):
         await self.log('INFO', message, args, kwargs)
 
@@ -247,7 +252,7 @@ class Logger(object):
 
     async def critical(self, message, *args, **kwargs):
         await self.log('CRITICAL', message, args, kwargs)
-    
+
     async def exception(self, message, *args, exc_info=True, **kwargs):
         await self.error(message, *args, exc_info=exc_info, **kwargs)
 

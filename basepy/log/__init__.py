@@ -78,27 +78,17 @@ class StdoutHandler(BaseHandler):
         try:
             msg = self.make_message(record)
             stream = self.stream
-            # issue 35046: merged two stream.writes into one.
             stream.write(msg + self.terminator)
             self.flush()
         except Exception:
             self.handle_error(record)
 
     def make_message(self, record):
-        def format_obj(obj):
-            try:
-                return json.dumps(obj)
-            except:
-                if hasattr(obj, 'to_json'):
-                    try:
-                        return obj.to_json()
-                    except:
-                        pass
-                raise Exception('Object can not covert to json or have `to_json` method.')
         data = record.to_dict()
         data['created'] = time.strftime("%Y-%m-%d %H:%M:%S %z", time.localtime(data['created']))
+        extra_data = data.pop('data')
         msg = self.format_str.format(**data)
-        extra = ' '.join(map(lambda x: "[{} = {}]".format(x[0], format_obj(x[1])), record.kwargs.items()))
+        extra = ' '.join(map(lambda x: "[{} = {}]".format(x[0], x[1]), extra_data.items()))
         if extra:
             msg = ' '.join([msg, extra])
         return msg
@@ -166,6 +156,19 @@ class LogRecord(object):
         return msg
 
     def to_dict(self):
+        def format_obj(obj):
+            # if isinstance(obj, str):
+            #     return obj
+            try:
+                return json.dumps(obj)
+            except:
+                if hasattr(obj, 'to_json'):
+                    try:
+                        return obj.to_json()
+                    except:
+                        pass
+                raise Exception('Object can not covert to json or not have `to_json` method.')
+        data = dict([(k, format_obj(v)) for k, v in self.kwargs.items()])
         return dict(
             name = self.name,
             level = self.levelname,
@@ -173,7 +176,7 @@ class LogRecord(object):
             hostname = self.hostname,
             process = self.process,
             message = self.get_message(),
-            data = self.kwargs
+            data = data
         )
 
 

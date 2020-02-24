@@ -101,6 +101,48 @@ class StdoutHandler(BaseHandler):
             name += ' '
         return '<%s %s(%s)>' % (self.__class__.__name__, name, level)
 
+class SocketHandler(BaseHandler):
+    terminator = '\n'
+    def __init__(self, host="127.0.0.1", port=514, connection_type="TCP", level="DEBUG", **kwargs):
+        self.host = host
+        self.port = port
+        self.level = level
+        self.levelno = LoggerLevel.get_levelno(self.level, 0)
+
+    def flush(self):
+        pass
+
+    async def emit(self, record):
+        try:
+            pass
+        except Exception:
+            self.handle_error(record)
+
+
+    def __repr__(self):
+        return '<%s [%s:%s(%s)]>' % (self.__class__.__name__, self.host, self.port, self.level)
+
+class SyslogHandler(BaseHandler):
+    terminator = '\n'
+    def __init__(self, host="127.0.0.1", port=514, connection_type="TCP", level="DEBUG", **kwargs):
+        self.host = host
+        self.port = port
+        self.level = level
+        self.levelno = LoggerLevel.get_levelno(self.level, 0)
+
+    def flush(self):
+        pass
+
+    async def emit(self, record):
+        try:
+            pass
+        except Exception:
+            self.handle_error(record)
+
+
+    def __repr__(self):
+        return '<%s [%s:%s(%s)]>' % (self.__class__.__name__, self.host, self.port, self.level)
+
 class FluentHandler(BaseHandler):
     terminator = '\n'
     def __init__(self, tag, host="127.0.0.1", port=24224, level="DEBUG", **kwargs):
@@ -183,6 +225,8 @@ class LogRecord(object):
 class Logger(object):
     handler_class_map = {
         'stdout': StdoutHandler,
+        'socket': SocketHandler,
+        'syslog': SyslogHandler,
         'fluent': FluentHandler
     }
     def __init__(self, name="", **kwargs):

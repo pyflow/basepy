@@ -1,12 +1,14 @@
 
 import time
 import sys
+import asyncio
 from asyncio import Queue
 import traceback
 import os
 import platform
 import json
-from basepy.asynclib.async_fluent import AsyncFluentSender
+from basepy.asynclib.fluent import AsyncFluentSender
+from basepy.asynclib import datagram
 
 _start_time = time.time()
 
@@ -107,14 +109,39 @@ class SocketHandler(BaseHandler):
         self.host = host
         self.port = port
         self.level = level
+        if connection_type.upper() not in ("TCP", "UDP"):
+            raise ValueError("connection_type must be one of ['TCP', 'UDP'].")
+        self.connection_type = connection_type.upper()
         self.levelno = LoggerLevel.get_levelno(self.level, 0)
+        self.tcp_writer = None
+        self.udp_stream = None
 
     def flush(self):
         pass
 
+    async def _write_tcp(self, data):
+        if self.tcp_writer is None:
+            _, writer = await asyncio.open_connection(self.host, self.port)
+            self.tcp_writer = writer
+        self.tcp_writer.write(data)
+        await self.tcp_writer.drain()
+
+    async def _write_udp(self, data):
+        if self.udp_stream is None:
+            writer = datagram.connect((self.host, self.port))
+            self.udp_stream = writer
+        await self.udp_stream.send(data)
+
+    async def _write(self, data):
+        if self.connection_type.upper() == "TCP":
+            await self._write_tcp(data)
+        elif self.connection_type.upper() == "UDP":
+            await self._write_udp(data)
+
     async def emit(self, record):
         try:
-            pass
+            msg = "{}{}".format(json.dumps(record.to_dict()), self.terminator)
+            await self._write(msg.encode("utf-8"))
         except Exception:
             self.handle_error(record)
 
@@ -250,11 +277,11 @@ class Logger(object):
     async def init_queue(self):
         self.queue = Queue()
 
-    def add(self, handler, level="DEBUG", format=None, queue=False, **kwargs):
+    def add(self, handler, level="DEBUG", log_format=None, queue=False, **kwargs):
         h_cls = self.handler_class_map.get(handler)
         if not h_cls:
             raise Exception('no handler class for {}'.format(handler))
-        h = h_cls(format=format, queue=queue, level=level, **kwargs)
+        h = h_cls(format=log_format, queue=queue, level=level, **kwargs)
         if queue:
             self.queued_handlers.append(h)
         else:

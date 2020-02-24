@@ -3,7 +3,7 @@ import logging
 import random
 import time
 from functools import wraps
-from basepy.asynclib import async_datagram
+from basepy.asynclib import datagram
 
 __all__ = ['StatsdClient']
 
@@ -18,7 +18,7 @@ class StatsdClient(object):
         self._stream = None
 
     async def init(self):
-        self._stream = await async_datagram.connect(self._addr)
+        self._stream = await datagram.connect(self._addr)
 
     async def timing(self, stat, delta, rate=1):
         """Send new timing information. `delta` is in milliseconds."""

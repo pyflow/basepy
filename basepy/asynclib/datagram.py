@@ -128,6 +128,8 @@ class DatagramClient(DatagramStream):
         """
         await super().send(data)
 
+    write = send
+
 
 class Protocol(asyncio.DatagramProtocol):
     """

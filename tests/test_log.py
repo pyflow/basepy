@@ -48,6 +48,13 @@ async def test_log_2(capsys):
     assert captured.out.find('[data = "data"]') > 1
     logger.clear()
 
+@pytest.mark.asyncio
+async def test_log_3():
+    logger.clear()
+    logger.add('socket', host='127.0.0.1', port=9000)
+    await logger.info('hello', data="data", data2={"h":1, "k":2, "x":[1, 2, 3]})
+    logger.clear()
+
 class Foo:
     def __init__(self):
         self.value = 'foo object'

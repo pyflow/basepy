@@ -1,11 +1,14 @@
 
 import time
 import sys
+import asyncio
+from asyncio import Queue
 import traceback
 import os
 import platform
 import json
-from queue import Queue
+from basepy.asynclib.fluent import AsyncFluentSender
+from basepy.asynclib import datagram
 from basepy.common.log import LoggerLevel, LogRecord, BaseHandler
 
 class StdoutHandler(BaseHandler):
@@ -23,7 +26,7 @@ class StdoutHandler(BaseHandler):
         if self.stream and hasattr(self.stream, "flush"):
             self.stream.flush()
 
-    def emit(self, record):
+    async def emit(self, record):
         try:
             msg = self.make_message(record)
             stream = self.stream
@@ -66,22 +69,29 @@ class SocketHandler(BaseHandler):
     def flush(self):
         pass
 
-    def _write_tcp(self, data):
-        pass
+    async def _write_tcp(self, data):
+        if self.tcp_writer is None:
+            _, writer = await asyncio.open_connection(self.host, self.port)
+            self.tcp_writer = writer
+        self.tcp_writer.write(data)
+        await self.tcp_writer.drain()
 
-    def _write_udp(self, data):
-        pass
+    async def _write_udp(self, data):
+        if self.udp_stream is None:
+            writer = datagram.connect((self.host, self.port))
+            self.udp_stream = writer
+        await self.udp_stream.send(data)
 
-    def _write(self, data):
+    async def _write(self, data):
         if self.connection_type.upper() == "TCP":
-            self._write_tcp(data)
+            await self._write_tcp(data)
         elif self.connection_type.upper() == "UDP":
-            self._write_udp(data)
+            await self._write_udp(data)
 
-    def emit(self, record):
+    async def emit(self, record):
         try:
             msg = "{}{}".format(json.dumps(record.to_dict()), self.terminator)
-            self._write(msg.encode("utf-8"))
+            await self._write(msg.encode("utf-8"))
         except Exception:
             self.handle_error(record)
 
@@ -89,11 +99,34 @@ class SocketHandler(BaseHandler):
     def __repr__(self):
         return '<%s [%s:%s(%s)]>' % (self.__class__.__name__, self.host, self.port, self.level)
 
+class FluentHandler(BaseHandler):
+    terminator = '\n'
+    def __init__(self, tag, host="127.0.0.1", port=24224, level="DEBUG", **kwargs):
+        self.tag = tag
+        self.host = host
+        self.port = port
+        self.fluentsender = AsyncFluentSender(tag, host=host, port=port)
+        self.level = level
+        self.levelno = LoggerLevel.get_levelno(self.level, 0)
 
-class Logger(object):
+    def flush(self):
+        pass
+
+    async def emit(self, record):
+        try:
+            await self.fluentsender.emit(record.name, record.to_dict())
+        except Exception:
+            self.handle_error(record)
+
+
+    def __repr__(self):
+        return '<%s %s(%s)>' % (self.__class__.__name__, self.tag, self.level)
+
+class AsyncLogger(object):
     handler_class_map = {
         'stdout': StdoutHandler,
-        'socket': SocketHandler
+        'socket': SocketHandler,
+        'fluent': FluentHandler
     }
     def __init__(self, name="", **kwargs):
         self.name = name
@@ -103,8 +136,8 @@ class Logger(object):
         self.dev_mode = True
         self.hostname = platform.node()
 
-    def init(self, config):
-        self.init_queue()
+    async def init(self, config):
+        await self.init_queue()
         handlers = config['handlers']
         for handler in handlers:
             conf = config.get(handler, {}).to_dict()
@@ -113,7 +146,7 @@ class Logger(object):
                 continue
             self.add(handler_type, **conf)
 
-    def init_queue(self):
+    async def init_queue(self):
         self.queue = Queue()
 
     def add(self, handler, level="DEBUG", log_format=None, queue=False, **kwargs):
@@ -136,7 +169,7 @@ class Logger(object):
         queued_handlers = list(filter(lambda x: levelno >= x.levelno, self.queued_handlers))
         return handlers, queued_handlers
 
-    def log(self, level, message, args, kwargs):
+    async def log(self, level, message, args, kwargs):
         handlers, queued_handlers = self._filter_handlers(level)
         if len(handlers) + len(queued_handlers) == 0:
             return None
@@ -144,29 +177,29 @@ class Logger(object):
         record = LogRecord(self.name, level, message, args, None, **kwargs)
         if len(self.handlers) > 0:
             for handler in self.handlers:
-                handler.emit(record)
+                await handler.emit(record)
 
         if len(self.queued_handlers) > 0:
-            self.queue.put(record)
+            await self.queue.put(record)
 
 
-    def debug(self, message, *args, **kwargs):
+    async def debug(self, message, *args, **kwargs):
         if self.dev_mode:
-            self.log('DEBUG', message, args, kwargs)
+            await self.log('DEBUG', message, args, kwargs)
 
-    def info(self, message, *args, **kwargs):
-        self.log('INFO', message, args, kwargs)
+    async def info(self, message, *args, **kwargs):
+        await self.log('INFO', message, args, kwargs)
 
-    def warning(self, message, *args, **kwargs):
-        self.log('WARNING', message, args, kwargs)
+    async def warning(self, message, *args, **kwargs):
+        await self.log('WARNING', message, args, kwargs)
 
-    def error(self, message, *args, **kwargs):
-        self.log('ERROR', message, args, kwargs)
+    async def error(self, message, *args, **kwargs):
+        await self.log('ERROR', message, args, kwargs)
 
-    def critical(self, message, *args, **kwargs):
-        self.log('CRITICAL', message, args, kwargs)
+    async def critical(self, message, *args, **kwargs):
+        await self.log('CRITICAL', message, args, kwargs)
 
-    def exception(self, message, *args, exc_info=True, **kwargs):
-        self.error(message, *args, exc_info=exc_info, **kwargs)
+    async def exception(self, message, *args, exc_info=True, **kwargs):
+        await self.error(message, *args, exc_info=exc_info, **kwargs)
 
-logger = Logger("root")
+logger = AsyncLogger("root")

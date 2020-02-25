@@ -6,9 +6,9 @@ import time
 import weakref
 from contextlib import suppress
 from contextlib import contextmanager
-from basepy.timeout import timeout
+from basepy.asynclib.timeout import timeout
 from concurrent.futures import ThreadPoolExecutor
-from basepy.threaded import threaded, threaded_separate, sync_wait_coroutine
+from basepy.asynclib.threaded import threaded, threaded_separate, sync_wait_coroutine
 
 import pytest
 

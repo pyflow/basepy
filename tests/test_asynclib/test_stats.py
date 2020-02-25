@@ -1,5 +1,5 @@
 import pytest
-from basepy.stats import StatsdClient
+from basepy.asynclib.stats import StatsdClient
 
 @pytest.mark.asyncio
 async def test_stats_1():

@@ -7,7 +7,7 @@ import warnings
 from functools import partial, wraps
 from types import MappingProxyType
 from typing import NamedTuple
-from .log import logger
+from basepy.asynclog import logger
 
 
 try:
@@ -109,7 +109,7 @@ def threaded_separate(func, detouch=True):
 
     if asyncio.iscoroutinefunction(func):
         raise TypeError('Can not wrap coroutine')
-    
+
     if inspect.isgeneratorfunction(func):
         raise TypeError('Can not wrap generator')
 

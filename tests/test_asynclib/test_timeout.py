@@ -1,7 +1,7 @@
 import asyncio
 import pytest
 
-from basepy.timeout import timeout
+from basepy.asynclib.timeout import timeout
 
 @pytest.mark.asyncio
 async def test_simple():

@@ -84,10 +84,10 @@ async def test_log_have_no_to_json(capsys):
     assert captured.out.find('[data = "foo_to_json"]') > 1
     lr = LogRecord('record', "INFO", "Record Message", [], None, data="record_data", data2=FooWithMixin())
     data = lr.to_dict()
-    assert isinstance(data['data']['data2'], str)
-    assert data['data']['data2'].find('foo_with_jsonmixin_foo_value') > 1
+    assert isinstance(data['data']['data2'], dict)
+    assert data['data']['data2']['foo'] ==  'foo_with_jsonmixin_foo_value'
     await logger.info('hello', data='foo_with_jsonmixin', data2=FooWithMixin())
     captured = capsys.readouterr()
-    print(captured.out)
+    #print(captured.out)
     assert captured.out.find('foo_with_jsonmixin_foo_value') > 1
     logger.clear()

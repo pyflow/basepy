@@ -91,7 +91,7 @@ class StdoutHandler(BaseHandler):
         data['created'] = time.strftime("%Y-%m-%d %H:%M:%S %z", time.localtime(data['created']))
         extra_data = data.pop('data')
         msg = self.format_str.format(**data)
-        extra = ' '.join(map(lambda x: "[{} = {}]".format(x[0], x[1]), extra_data.items()))
+        extra = ' '.join(map(lambda x: "[{} = {}]".format(x[0], json.dumps(x[1])), extra_data.items()))
         if extra:
             msg = ' '.join([msg, extra])
         return msg
@@ -143,27 +143,6 @@ class SocketHandler(BaseHandler):
         try:
             msg = "{}{}".format(json.dumps(record.to_dict()), self.terminator)
             await self._write(msg.encode("utf-8"))
-        except Exception:
-            self.handle_error(record)
-
-
-    def __repr__(self):
-        return '<%s [%s:%s(%s)]>' % (self.__class__.__name__, self.host, self.port, self.level)
-
-class SyslogHandler(BaseHandler):
-    terminator = '\n'
-    def __init__(self, host="127.0.0.1", port=514, connection_type="TCP", level="DEBUG", **kwargs):
-        self.host = host
-        self.port = port
-        self.level = level
-        self.levelno = LoggerLevel.get_levelno(self.level, 0)
-
-    def flush(self):
-        pass
-
-    async def emit(self, record):
-        try:
-            pass
         except Exception:
             self.handle_error(record)
 
@@ -231,8 +210,8 @@ class LogRecord(object):
             #     return obj
             try:
                 if hasattr(obj, "to_dict"):
-                    return json.dumps(obj.to_dict())
-                return json.dumps(ToDictMixin.dump_obj(obj))
+                    return obj.to_dict()
+                return ToDictMixin.dump_obj(obj)
             except:
                 raise Exception('Object can not covert to json dict or not have `to_dict` method.')
         data = dict([(k, format_obj(v)) for k, v in self.kwargs.items()])
@@ -251,7 +230,6 @@ class Logger(object):
     handler_class_map = {
         'stdout': StdoutHandler,
         'socket': SocketHandler,
-        'syslog': SyslogHandler,
         'fluent': FluentHandler
     }
     def __init__(self, name="", **kwargs):

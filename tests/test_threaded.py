@@ -18,7 +18,7 @@ except ImportError:
     contextvars = None
 
 
-pytestmark = pytest.mark.catch_loop_exceptions
+pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def timer():
@@ -35,7 +35,7 @@ def timer():
 
         lower_bound = expected_time - dispersion_value
         upper_bound = expected_time + dispersion_value
-    
+
         assert lower_bound < delta < upper_bound
 
     return timer
@@ -45,9 +45,11 @@ def threaded_decorator(request, executor):
     assert executor
     return request.param
 
+
 @pytest.fixture
-def executor(loop: asyncio.AbstractEventLoop):
+def executor():
     thread_pool = ThreadPoolExecutor(max_workers=8)
+    loop = asyncio.get_event_loop()
     loop.set_default_executor(thread_pool)
     try:
         yield thread_pool
@@ -107,7 +109,7 @@ async def test_simple(threaded_decorator, timer):
 
 
 @pytest.mark.skipif(contextvars is None, reason="no contextvars support")
-async def test_context_vars(threaded_decorator, loop):
+async def test_context_vars(threaded_decorator):
     ctx_var = contextvars.ContextVar("test")
 
     @threaded_decorator
@@ -124,8 +126,8 @@ async def test_context_vars(threaded_decorator, loop):
     await asyncio.gather(*futures)
 
 
-async def test_wait_coroutine_sync(threaded_decorator, loop):
-    print('loop', loop == asyncio.get_event_loop())
+async def test_wait_coroutine_sync(threaded_decorator):
+    loop = asyncio.get_event_loop()
     result = 0
 
     async def coro():
@@ -141,7 +143,8 @@ async def test_wait_coroutine_sync(threaded_decorator, loop):
     assert result == 1
 
 
-async def test_wait_coroutine_sync_exc(threaded_decorator, loop):
+async def test_wait_coroutine_sync_exc(threaded_decorator):
+    loop = asyncio.get_event_loop()
     result = 0
 
     async def coro():

@@ -77,7 +77,7 @@ async def test_log_have_no_to_json(capsys):
     logger.add('stdout')
     await logger.info('hello', data="data", data2=Foo())
     captured = capsys.readouterr()
-    assert captured.out == ''
+    assert captured.out.find('{"value": "foo object"}') > 1
     await logger.info('hello', data='foo_to_json', data2=FooToJson())
     captured = capsys.readouterr()
     #print(captured.out)
@@ -88,5 +88,6 @@ async def test_log_have_no_to_json(capsys):
     assert data['data']['data2'].find('foo_with_jsonmixin_foo_value') > 1
     await logger.info('hello', data='foo_with_jsonmixin', data2=FooWithMixin())
     captured = capsys.readouterr()
+    print(captured.out)
     assert captured.out.find('foo_with_jsonmixin_foo_value') > 1
     logger.clear()

@@ -9,6 +9,7 @@ import platform
 import json
 from basepy.asynclib.fluent import AsyncFluentSender
 from basepy.asynclib import datagram
+from basepy.mixins import ToDictMixin
 
 _start_time = time.time()
 
@@ -229,14 +230,11 @@ class LogRecord(object):
             # if isinstance(obj, str):
             #     return obj
             try:
-                return json.dumps(obj)
+                if hasattr(obj, "to_dict"):
+                    return json.dumps(obj.to_dict())
+                return json.dumps(ToDictMixin.dump_obj(obj))
             except:
-                if hasattr(obj, 'to_json'):
-                    try:
-                        return obj.to_json()
-                    except:
-                        pass
-                raise Exception('Object can not covert to json or not have `to_json` method.')
+                raise Exception('Object can not covert to json dict or not have `to_dict` method.')
         data = dict([(k, format_obj(v)) for k, v in self.kwargs.items()])
         return dict(
             name = self.name,

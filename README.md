@@ -13,7 +13,7 @@ Very simple and powerful log system, support structure log. It's not depends on 
 
 ```python
 import asyncio
-from basepy.log import logger
+from basepy.asynclog import logger
 
 logger.add("stdout")
 
@@ -40,7 +40,7 @@ Config module is easy and powerful settings configuration with following feature
 1. keep secrets related in sperate file `.secrets.toml`
 2. keep local config in sperate file `settings.local.toml` or `.secrets.local.toml`, the local settings will override the settings for the same key.
 
-So, config files should looks like 
+So, config files should looks like
 
 ```
 application
@@ -75,7 +75,7 @@ The `settings.toml` can contains very complex setting, for example
     [log.stdout]
     handler_type = "stdout"
     level = "debug"
-    
+
     [log.local_fluent]
     handler_type = "fluent"
     host = "127.0.0.1"
@@ -92,4 +92,4 @@ print(setting.log.handlers)
 ```
 
 ## more
-Not documented, please refer the code.
+Please refer the docs directory.

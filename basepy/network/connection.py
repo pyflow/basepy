@@ -301,13 +301,13 @@ class BlockingConnectionPool(ConnectionPool):
     """
     Thread-safe blocking connection pool.
     It performs the same function as the default
-    ``:py:class: ~rock.common.connection.ConnectionPool``
+    ``:py:class: ~basepy.network.connection.ConnectionPool``
     implementation, in that, it maintains a pool of reusable
     connections (safely across threads if required).
     The difference is that, in the event that a client tries to get a
     connection from the pool when all of connections are in use, rather than
-    raising a ``:py:class: ~rock.common.exceptions.ConnectionError``
-    (as the default ``:py:class: ~rock.common.connection.ConnectionPool``
+    raising a ``:py:class: ~basepy.exceptions.ConnectionError``
+    (as the default ``:py:class: ~basepy.network.connection.ConnectionPool``
     implementation does), it makes the client wait ("blocks") for a
     specified number of seconds until a connection becomes available.
     Use ``max_connections`` to increase / decrease the pool size::

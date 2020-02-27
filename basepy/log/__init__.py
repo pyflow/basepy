@@ -7,6 +7,8 @@ import platform
 import json
 from queue import Queue
 from basepy.common.log import LoggerLevel, LogRecord, BaseHandler
+from basepy.network.connection import BlockingConnectionPool
+import socket
 
 class StdoutHandler(BaseHandler):
     terminator = '\n'
@@ -60,17 +62,27 @@ class SocketHandler(BaseHandler):
             raise ValueError("connection_type must be one of ['TCP', 'UDP'].")
         self.connection_type = connection_type.upper()
         self.levelno = LoggerLevel.get_levelno(self.level, 0)
-        self.tcp_writer = None
-        self.udp_stream = None
+        if connection_type.upper() in ['TCP', 'UNIXSOCKET']:
+            self.tcp_pool = BlockingConnectionPool(max_connections=4, timeout=6, host=self.host,
+                port=self.port)
+            self.udp_socket = None
+        elif connection_type.upper() in ['UDP']:
+            self.tcp_pool = None
+            self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
 
     def flush(self):
         pass
 
     def _write_tcp(self, data):
-        pass
+        conn = self.tcp_pool.get_connection()
+        conn.write(data)
+
 
     def _write_udp(self, data):
-        pass
+        if len(data) > 65500:
+            raise ValueError('data is to large for udp, {} must < 65500.'%(len(data)))
+        self.udp_socket.sendto(data, (self.host, self.port))
 
     def _write(self, data):
         if self.connection_type.upper() == "TCP":

@@ -3,6 +3,7 @@ import sys
 import traceback
 import platform
 import os
+from inspect import currentframe, getframeinfo
 from basepy.mixins import ToDictMixin
 
 _start_time = time.time()
@@ -76,6 +77,7 @@ class LogRecord(object):
         self.created = ct
         self.msecs = (ct - int(ct)) * 1000
         self.msecs_since_start = (self.created - _start_time) * 1000
+        self.debuginfo = kwargs.pop('debuginfo', '')
         self.kwargs = kwargs
 
     def __repr__(self):
@@ -86,6 +88,12 @@ class LogRecord(object):
         if self.args:
             msg = msg % self.args
         return msg
+
+    def get_debuginfo(self):
+        if not self.dev_mode:
+            return 'no-debuginfo'
+        frameinfo = getframeinfo(currentframe())
+        return '{}:{}'.format(frameinfo.filename, frameinfo.lineno)
 
     def to_dict(self):
         def format_obj(obj):
@@ -104,6 +112,7 @@ class LogRecord(object):
             created = self.created,
             hostname = self.hostname,
             process = self.process,
+            debuginfo = self.debuginfo,
             message = self.get_message(),
             data = data
         )

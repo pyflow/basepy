@@ -16,8 +16,9 @@ def test_log(capsys):
     logger.add('stdout')
     assert logger.handlers[0].levelno == LoggerLevel.DEBUG
     assert len(logger.handlers) == 1
-    logger.info('hello')
+    logger.debug('hello')
     captured = capsys.readouterr()
+    print(captured.out)
     assert captured.out.endswith("[hello]\n")
     logger.clear()
 
@@ -34,6 +35,7 @@ def test_log_level(capsys):
     assert captured.out == ""
     logger.critical('critical')
     captured = capsys.readouterr()
+    print(captured.out)
     assert captured.out.endswith("[critical]\n")
     logger.clear()
 
@@ -42,14 +44,16 @@ def test_log_2(capsys):
     logger.add('stdout')
     logger.info('hello', data="data", data2={"h":1, "k":2, "x":[1, 2, 3]})
     captured = capsys.readouterr()
-    #print(captured.out)
+    print(captured.out)
     assert captured.out.find('[data = "data"]') > 1
     logger.clear()
 
-def test_log_3():
+def test_log_3(capsys):
     logger.clear()
     logger.add('socket', host='127.0.0.1', port=9000)
     logger.info('hello', data="data", data2={"h":1, "k":2, "x":[1, 2, 3]})
+    captured = capsys.readouterr()
+    print(captured.out)
     logger.clear()
 
 class Foo:

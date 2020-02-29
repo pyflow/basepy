@@ -8,6 +8,8 @@ import json
 from queue import Queue
 from basepy.common.log import LoggerLevel, LogRecord, BaseHandler
 from basepy.network.connection import BlockingConnectionPool
+import inspect
+from inspect import currentframe, getframeinfo
 import socket
 
 class StdoutHandler(BaseHandler):
@@ -16,7 +18,7 @@ class StdoutHandler(BaseHandler):
         if stream is None:
             stream = sys.stdout
         self.stream = stream
-        self.format_str = "[{created}] [{hostname}.{process}] [{level}] [{message}]"
+        self.format_str = "[{created}] [{hostname}.{process}] [{level}] [{debuginfo}] [{message}]"
         self.level = level
         self.levelno = LoggerLevel.get_levelno(self.level, 0)
 
@@ -148,12 +150,21 @@ class Logger(object):
         queued_handlers = list(filter(lambda x: levelno >= x.levelno, self.queued_handlers))
         return handlers, queued_handlers
 
+    def get_debuginfo(self):
+        current = inspect.currentframe()
+        frames = inspect.getouterframes(current, 1)
+        for frame in frames:
+            if not frame.filename.endswith('/basepy/log/__init__.py'):
+                return '{}:{}'.format(frame.filename, frame.lineno)
+        return 'no-frameinfo'
+
     def log(self, level, message, args, kwargs):
         handlers, queued_handlers = self._filter_handlers(level)
         if len(handlers) + len(queued_handlers) == 0:
             return None
 
-        record = LogRecord(self.name, level, message, args, None, **kwargs)
+        debuginfo = self.get_debuginfo() if level=="DEBUG" else ":0"
+        record = LogRecord(self.name, level, message, args, None, debuginfo=debuginfo, **kwargs)
         if len(self.handlers) > 0:
             for handler in self.handlers:
                 handler.emit(record)

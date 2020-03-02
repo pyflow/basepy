@@ -3,7 +3,7 @@ import socket
 import time
 import warnings
 
-__all__ = ("bind", "connect", "from_socket", "UDPClient")
+__all__ = ("bind", "connect", "from_socket", "DatagramAutoClient")
 
 
 class DatagramStream:
@@ -188,7 +188,7 @@ class Protocol(asyncio.DatagramProtocol):
         super().resume_writing()
 
 
-class UDPClient:
+class DatagramAutoClient:
     RECONNECT_INTERVAL = 300
 
     def __init__(self, host, port):
@@ -199,33 +199,43 @@ class UDPClient:
         self._last_connect_time = None
 
     async def init(self):
-        self._last_connect_time = int(time.time())
-        self._datagram_client = await connect(self._addr)
+        if self._datagram_client is None:
+            await self._connect()
 
-    async def _init(self):
-        if (
-            self._last_connect_time is None
-            or (int(time.time()) - self._last_connect_time) >= self.RECONNECT_INTERVAL
-        ):
-            try:
-                await self.init()
-            except Exception:
-                pass
+    def close(self):
+        if self._datagram_client:
+            self._datagram_client.close()
+            self._datagram_client = None
 
     async def send(self, data):
-        if self._datagram_client is None:
-            try:
-                await self.init()
-            except Exception:
-                pass
-
+        await self._init()
         if self._datagram_client is not None:
             try:
                 await self._datagram_client.send(data)
             except Exception:
-                await self._init()
+                self.close()
 
     write = send
+
+    async def _connect(self):
+        self._last_connect_time = int(time.time())
+        self._datagram_client = await connect(self._addr)
+
+    async def _init(self):
+        not_init = self._last_connect_time is None
+        need_reconnect = (
+            self._datagram_client is None
+            and self._last_connect_time is not None
+            and (int(time.time()) - self._last_connect_time) >= self.RECONNECT_INTERVAL
+        )
+        if (
+            not_init
+            or need_reconnect
+        ):
+            try:
+                await self._connect()
+            except Exception:
+                pass
 
 
 async def bind(addr):

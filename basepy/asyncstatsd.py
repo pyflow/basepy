@@ -14,7 +14,7 @@ class StatsdClient(object):
         """Create a new client."""
         self._prefix = prefix
         self._loop = loop or asyncio.get_event_loop()
-        self._stream = datagram.UDPClient(host, port)
+        self._stream = datagram.DatagramAutoClient(host, port)
 
     async def init(self):
         await self._stream.init()

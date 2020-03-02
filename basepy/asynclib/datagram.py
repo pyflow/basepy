@@ -1,8 +1,9 @@
 import asyncio
 import socket
+import time
 import warnings
 
-__all__ = ("bind", "connect", "from_socket")
+__all__ = ("bind", "connect", "from_socket", "UDPClient")
 
 
 class DatagramStream:
@@ -185,6 +186,46 @@ class Protocol(asyncio.DatagramProtocol):
     def resume_writing(self):
         self._drained.set()
         super().resume_writing()
+
+
+class UDPClient:
+    RECONNECT_INTERVAL = 300
+
+    def __init__(self, host, port):
+        self.host = host
+        self.port = port
+        self._addr = (host, port)
+        self._datagram_client = None
+        self._last_connect_time = None
+
+    async def init(self):
+        self._last_connect_time = int(time.time())
+        self._datagram_client = await connect(self._addr)
+
+    async def _init(self):
+        if (
+            self._last_connect_time is None
+            or (int(time.time()) - self._last_connect_time) >= self.RECONNECT_INTERVAL
+        ):
+            try:
+                await self.init()
+            except Exception:
+                pass
+
+    async def send(self, data):
+        if self._datagram_client is None:
+            try:
+                await self.init()
+            except Exception:
+                pass
+
+        if self._datagram_client is not None:
+            try:
+                await self._datagram_client.send(data)
+            except Exception:
+                await self._init()
+
+    write = send
 
 
 async def bind(addr):

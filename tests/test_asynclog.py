@@ -3,6 +3,7 @@ from basepy.common.log import  LoggerLevel, LogRecord
 from basepy.asynclog import AsyncLogger
 import pytest
 import json
+import asyncio
 from basepy.mixins import ToDictMixin
 
 logger = AsyncLogger("basepy-test-log")
@@ -22,28 +23,36 @@ async def test_log(capsys):
     assert captured.out.endswith("[hello]\n")
     logger.clear()
 
-def test_log_sync(capsys):
+@pytest.mark.asyncio
+async def test_log_sync(capsys):
     logger = AsyncLogger("test_log_sync")
     logger.clear()
     logger.add('stdout')
     logger = logger.sync()
-    logger.info('hello')
+    logger.info('info')
+    await asyncio.sleep(0.1)
     captured = capsys.readouterr()
     #print(captured.out)
-    assert captured.out.endswith("[hello]\n")
-    logger.debug('hello')
+    assert captured.out.endswith("[info]\n")
+    logger.debug('debug')
+    await asyncio.sleep(0.1)
     captured = capsys.readouterr()
-    assert captured.out.endswith("[hello]\n")
+    assert captured.out.endswith("[debug]\n")
     logger.warning('warning')
+    await asyncio.sleep(0.1)
     captured = capsys.readouterr()
     assert captured.out.endswith("[warning]\n")
     logger.critical('critical')
+    await asyncio.sleep(0.1)
     captured = capsys.readouterr()
     assert captured.out.endswith("[critical]\n")
     logger.error('error')
+    await asyncio.sleep(0.1)
     captured = capsys.readouterr()
     assert captured.out.endswith("[error]\n")
+    logger.loop_task.cancel()
     logger.clear()
+    await asyncio.sleep(0.1)
 
 @pytest.mark.asyncio
 async def test_log_level(capsys):

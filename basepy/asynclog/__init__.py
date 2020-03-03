@@ -10,7 +10,6 @@ import json
 from copy import copy
 from basepy.asynclib.fluent import AsyncFluentSender
 from basepy.asynclib import datagram
-from basepy.asynclib import wait_async
 from basepy.common.log import LoggerLevel, LogRecord, BaseHandler
 
 class StdoutHandler(BaseHandler):
@@ -40,7 +39,7 @@ class StdoutHandler(BaseHandler):
     def make_message(self, record):
         data = record.to_dict()
         data['created'] = time.strftime("%Y-%m-%d %H:%M:%S %z", time.localtime(data['created']))
-        extra_data = data.pop('data')
+        extra_data = data.pop('data', None)
         msg = self.format_str.format(**data)
         extra = ' '.join(map(lambda x: "[{} = {}]".format(x[0], json.dumps(x[1])), extra_data.items()))
         if extra:
@@ -175,8 +174,8 @@ class AsyncLoggerEngine:
         handlers, queued_handlers = self._filter_handlers(level)
         if len(handlers) + len(queued_handlers) == 0:
             return None
-
-        record = LogRecord(name, level, message, args, None, **kwargs)
+        exc_info = kwargs.pop('exc_info', None)
+        record = LogRecord(name, level, message, args, exc_info, None, **kwargs)
         if len(self.handlers) > 0:
             for handler in self.handlers:
                 await handler.emit(record)
@@ -189,6 +188,8 @@ class AsyncSyncLogger:
         self.name = name
         self.engine = engine or AsyncLoggerEngine()
         self.kwargs = kwargs
+        self.queue = Queue(maxsize=10000)
+        self.loop_task = None
 
     def add(self, handler, level="DEBUG", log_format=None, queue=False, **kwargs):
         return self.engine.add(handler, level=level, log_format=log_format, queue=queue, **kwargs)
@@ -200,7 +201,7 @@ class AsyncSyncLogger:
         return self
 
     def bind(self, **kwargs):
-        name = kwargs.pop('name') or self.name
+        name = kwargs.pop('name', '') or self.name
         new_kwargs = copy(self.kwargs)
         new_kwargs.update(kwargs)
         return AsyncSyncLogger(name, self.engine, **new_kwargs)
@@ -208,7 +209,28 @@ class AsyncSyncLogger:
     def log(self, level, message, args, kwargs):
         merged_args = copy(self.kwargs)
         merged_args.update(kwargs)
-        wait_async(self.engine.log(self.name, level, message, args, merged_args))
+        if self.loop_task:
+            if self.loop_task.done() or self.loop_task.cancelled():
+                exc = self.loop_task.exception()
+                if exc:
+                    raise(exc)
+                self.loop_task = None
+
+        if not self.loop_task:
+            try:
+                self.loop_task = asyncio.ensure_future(self.log_loop())
+            except Exception as ex:
+                raise(ex)
+        self.queue.put_nowait([self.name, level, message, args, merged_args])
+
+    async def log_loop(self):
+        while 1:
+            try:
+                task = await self.queue.get()
+                await self.engine.log(*task)
+                self.queue.task_done()
+            except RuntimeError as ex:
+                _ = ex
 
     def debug(self, message, *args, **kwargs):
         if self.engine.dev_mode:
@@ -226,8 +248,8 @@ class AsyncSyncLogger:
     def critical(self, message, *args, **kwargs):
         self.log('CRITICAL', message, args, kwargs)
 
-    def exception(self, message, *args, exc_info=True, **kwargs):
-        self.error(message, *args, exc_info=exc_info, **kwargs)
+    def exception(self, message, *args, **kwargs):
+        self.error(message, *args, **kwargs)
 
 
 class AsyncLogger(object):
@@ -246,7 +268,7 @@ class AsyncLogger(object):
         return AsyncSyncLogger(self.name, self.engine, **self.kwargs)
 
     def bind(self, **kwargs):
-        name = kwargs.pop('name') or self.name
+        name = kwargs.pop('name', '') or self.name
         new_kwargs = copy(self.kwargs)
         new_kwargs.update(kwargs)
         return AsyncLogger(name, self.engine, **new_kwargs)
@@ -272,7 +294,7 @@ class AsyncLogger(object):
     async def critical(self, message, *args, **kwargs):
         await self.log('CRITICAL', message, args, kwargs)
 
-    async def exception(self, message, *args, exc_info=True, **kwargs):
-        await self.error(message, *args, exc_info=exc_info, **kwargs)
+    async def exception(self, message, *args, **kwargs):
+        await self.error(message, *args, **kwargs)
 
 logger = AsyncLogger("root")

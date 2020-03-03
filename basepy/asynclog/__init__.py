@@ -7,8 +7,10 @@ import traceback
 import os
 import platform
 import json
+from copy import copy
 from basepy.asynclib.fluent import AsyncFluentSender
 from basepy.asynclib import datagram
+from basepy.asynclib import wait_async
 from basepy.common.log import LoggerLevel, LogRecord, BaseHandler
 
 class StdoutHandler(BaseHandler):
@@ -17,7 +19,7 @@ class StdoutHandler(BaseHandler):
         if stream is None:
             stream = sys.stdout
         self.stream = stream
-        self.format_str = "[{created}] [{hostname}.{process}] [{level}] [{message}]"
+        self.format_str = "[{created}] [{hostname}.{process}] [{level}] [{name}] [{message}]"
         self.level = level
         self.levelno = LoggerLevel.get_levelno(self.level, 0)
 
@@ -122,14 +124,14 @@ class FluentHandler(BaseHandler):
     def __repr__(self):
         return '<%s %s(%s)>' % (self.__class__.__name__, self.tag, self.level)
 
-class AsyncLogger(object):
+
+class AsyncLoggerEngine:
     handler_class_map = {
         'stdout': StdoutHandler,
         'socket': SocketHandler,
         'fluent': FluentHandler
     }
-    def __init__(self, name="", **kwargs):
-        self.name = name
+    def __init__(self, **kwargs):
         self.handlers = []
         self.queue = None
         self.queued_handlers = []
@@ -169,12 +171,12 @@ class AsyncLogger(object):
         queued_handlers = list(filter(lambda x: levelno >= x.levelno, self.queued_handlers))
         return handlers, queued_handlers
 
-    async def log(self, level, message, args, kwargs):
+    async def log(self, name, level, message, args, kwargs):
         handlers, queued_handlers = self._filter_handlers(level)
         if len(handlers) + len(queued_handlers) == 0:
             return None
 
-        record = LogRecord(self.name, level, message, args, None, **kwargs)
+        record = LogRecord(name, level, message, args, None, **kwargs)
         if len(self.handlers) > 0:
             for handler in self.handlers:
                 await handler.emit(record)
@@ -182,9 +184,80 @@ class AsyncLogger(object):
         if len(self.queued_handlers) > 0:
             await self.queue.put(record)
 
+class AsyncSyncLogger:
+    def __init__(self, name="", engine=None, **kwargs):
+        self.name = name
+        self.engine = engine or AsyncLoggerEngine()
+        self.kwargs = kwargs
+
+    def add(self, handler, level="DEBUG", log_format=None, queue=False, **kwargs):
+        return self.engine.add(handler, level=level, log_format=log_format, queue=queue, **kwargs)
+
+    def clear(self):
+        return self.engine.clear()
+
+    def sync(self):
+        return self
+
+    def bind(self, **kwargs):
+        name = kwargs.pop('name') or self.name
+        new_kwargs = copy(self.kwargs)
+        new_kwargs.update(kwargs)
+        return AsyncSyncLogger(name, self.engine, **new_kwargs)
+
+    def log(self, level, message, args, kwargs):
+        merged_args = copy(self.kwargs)
+        merged_args.update(kwargs)
+        wait_async(self.engine.log(self.name, level, message, args, merged_args))
+
+    def debug(self, message, *args, **kwargs):
+        if self.engine.dev_mode:
+            self.log('DEBUG', message, args, kwargs)
+
+    def info(self, message, *args, **kwargs):
+        self.log('INFO', message, args, kwargs)
+
+    def warning(self, message, *args, **kwargs):
+        self.log('WARNING', message, args, kwargs)
+
+    def error(self, message, *args, **kwargs):
+        self.log('ERROR', message, args, kwargs)
+
+    def critical(self, message, *args, **kwargs):
+        self.log('CRITICAL', message, args, kwargs)
+
+    def exception(self, message, *args, exc_info=True, **kwargs):
+        self.error(message, *args, exc_info=exc_info, **kwargs)
+
+
+class AsyncLogger(object):
+    def __init__(self, name="", engine=None, **kwargs):
+        self.name = name
+        self.engine = engine or AsyncLoggerEngine()
+        self.kwargs = kwargs
+
+    def add(self, handler, level="DEBUG", log_format=None, queue=False, **kwargs):
+        return self.engine.add(handler, level=level, log_format=log_format, queue=queue, **kwargs)
+
+    def clear(self):
+        return self.engine.clear()
+
+    def sync(self):
+        return AsyncSyncLogger(self.name, self.engine, **self.kwargs)
+
+    def bind(self, **kwargs):
+        name = kwargs.pop('name') or self.name
+        new_kwargs = copy(self.kwargs)
+        new_kwargs.update(kwargs)
+        return AsyncLogger(name, self.engine, **new_kwargs)
+
+    async def log(self, level, message, args, kwargs):
+        merged_args = copy(self.kwargs)
+        merged_args.update(kwargs)
+        await self.engine.log(self.name, level, message, args, merged_args)
 
     async def debug(self, message, *args, **kwargs):
-        if self.dev_mode:
+        if self.engine.dev_mode:
             await self.log('DEBUG', message, args, kwargs)
 
     async def info(self, message, *args, **kwargs):

@@ -15,19 +15,42 @@ async def test_log(capsys):
     captured = capsys.readouterr()
     assert captured.out == ""
     logger.add('stdout')
-    assert logger.handlers[0].levelno == LoggerLevel.DEBUG
-    assert len(logger.handlers) == 1
+    assert logger.engine.handlers[0].levelno == LoggerLevel.DEBUG
+    assert len(logger.engine.handlers) == 1
     await logger.info('hello')
     captured = capsys.readouterr()
     assert captured.out.endswith("[hello]\n")
+    logger.clear()
+
+def test_log_sync(capsys):
+    logger = AsyncLogger("test_log_sync")
+    logger.clear()
+    logger.add('stdout')
+    logger = logger.sync()
+    logger.info('hello')
+    captured = capsys.readouterr()
+    #print(captured.out)
+    assert captured.out.endswith("[hello]\n")
+    logger.debug('hello')
+    captured = capsys.readouterr()
+    assert captured.out.endswith("[hello]\n")
+    logger.warning('warning')
+    captured = capsys.readouterr()
+    assert captured.out.endswith("[warning]\n")
+    logger.critical('critical')
+    captured = capsys.readouterr()
+    assert captured.out.endswith("[critical]\n")
+    logger.error('error')
+    captured = capsys.readouterr()
+    assert captured.out.endswith("[error]\n")
     logger.clear()
 
 @pytest.mark.asyncio
 async def test_log_level(capsys):
     logger.clear()
     logger.add('stdout', level="INFO")
-    assert len(logger.handlers) == 1
-    assert logger.handlers[0].levelno == LoggerLevel.INFO
+    assert len(logger.engine.handlers) == 1
+    assert logger.engine.handlers[0].levelno == LoggerLevel.INFO
     await logger.info('hello')
     captured = capsys.readouterr()
     assert captured.out.endswith("[hello]\n")

@@ -1,8 +1,9 @@
 import asyncio
 import socket
+import time
 import warnings
 
-__all__ = ("bind", "connect", "from_socket")
+__all__ = ("bind", "connect", "from_socket", "DatagramAutoClient")
 
 
 class DatagramStream:
@@ -185,6 +186,65 @@ class Protocol(asyncio.DatagramProtocol):
     def resume_writing(self):
         self._drained.set()
         super().resume_writing()
+
+
+class DatagramAutoClient:
+    DEFAULT_RECONNECT_INTERVAL_MS = 60 * 1000  # 1 minute
+
+    def __init__(self, host, port, reconnect_interval_ms=None):
+        self.host = host
+        self.port = port
+        self.reconnect_interval_ms = reconnect_interval_ms or self.DEFAULT_RECONNECT_INTERVAL_MS
+        self._addr = (host, port)
+        self._datagram_client = None
+        self._last_connect_time = None
+
+        self._last_connect_exception = None
+        self._last_send_exception = None
+
+    @property
+    def last_connect_exception(self):
+        return self._last_connect_exception
+
+    @property
+    def last_send_exception(self):
+        return self._last_send_exception
+
+    async def init(self):
+        await self._get_client()
+
+    def close(self):
+        if self._datagram_client:
+            self._datagram_client.close()
+            self._datagram_client = None
+
+    async def send(self, data):
+        try:
+            client = await self._get_client()
+        except Exception as e:
+            self._last_connect_exception = e
+        else:
+            if client is not None:
+                try:
+                    await client.send(data)
+                except Exception as e:
+                    self._last_send_exception = e
+                    self.close()
+
+    write = send
+
+    async def _get_client(self):
+        if self._datagram_client:
+            return self._datagram_client
+        not_init = self._last_connect_time is None
+        waited_longer = (
+            self._last_connect_time is not None
+            and (int(time.time() * 1000) - self._last_connect_time) >= self.reconnect_interval_ms
+        )
+        if not_init or waited_longer:
+            self._last_connect_time = int(time.time() * 1000)
+            self._datagram_client = await connect(self._addr)
+            return self._datagram_client
 
 
 async def bind(addr):

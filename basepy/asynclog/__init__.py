@@ -243,13 +243,20 @@ class AsyncSyncLogger:
         self.log('WARNING', message, args, kwargs)
 
     def error(self, message, *args, **kwargs):
+        exc_info = kwargs.pop('exc_info', None)
+        if exc_info:
+            kwargs['exc_info'] = sys.exc_info()
         self.log('ERROR', message, args, kwargs)
 
     def critical(self, message, *args, **kwargs):
+        exc_info = kwargs.pop('exc_info', None)
+        if exc_info:
+            kwargs['exc_info'] = sys.exc_info()
         self.log('CRITICAL', message, args, kwargs)
 
     def exception(self, message, *args, **kwargs):
-        self.error(message, *args, **kwargs)
+        kwargs.pop('exc_info', None)
+        self.error(message, *args, exc_info=True, **kwargs)
 
 
 class AsyncLogger(object):
@@ -289,12 +296,19 @@ class AsyncLogger(object):
         await self.log('WARNING', message, args, kwargs)
 
     async def error(self, message, *args, **kwargs):
+        exc_info = kwargs.pop('exc_info', None)
+        if exc_info:
+            kwargs['exc_info'] = sys.exc_info()
         await self.log('ERROR', message, args, kwargs)
 
     async def critical(self, message, *args, **kwargs):
+        exc_info = kwargs.pop('exc_info', None)
+        if exc_info:
+            kwargs['exc_info'] = sys.exc_info()
         await self.log('CRITICAL', message, args, kwargs)
 
     async def exception(self, message, *args, **kwargs):
-        await self.error(message, *args, **kwargs)
+        kwargs.pop('exc_info', None)
+        await self.error(message, *args, exc_info=True, **kwargs)
 
 logger = AsyncLogger("root")

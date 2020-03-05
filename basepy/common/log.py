@@ -87,13 +87,15 @@ class LogRecord(object):
         msg = str(self.msg)
         if self.args:
             msg = msg % self.args
+        if self.exc_info:
+            if isinstance(self.exc_info, Exception):
+                exc_str = '<{}>: {}'.format(type(self.exc_info).__name__, str(self.exc_info))
+            elif isinstance(self.exc_info, (tuple, list)):
+                exc_str = ''.join(traceback.format_exception(*self.exc_info))
+            else:
+                exc_str = str(self.exc_info)
+            msg = '{}\n{}\n'.format(msg, exc_str)
         return msg
-
-    def get_debuginfo(self):
-        if not self.dev_mode:
-            return 'no-debuginfo'
-        frameinfo = getframeinfo(currentframe())
-        return '{}:{}'.format(frameinfo.filename, frameinfo.lineno)
 
     def to_dict(self):
         def format_obj(obj):

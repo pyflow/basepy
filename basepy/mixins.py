@@ -2,17 +2,22 @@ import json
 
 class ToDictMixin:
     @staticmethod
-    def dump_obj(obj, depth=0, max_depth=3):
+    def dump_obj(obj, depth=0, max_depth=1):
         if obj is None:
             return None
+        elif isinstance(obj, bytes):
+            try:
+                return str(obj, 'utf-8')
+            except:
+                return obj
         elif isinstance(obj, (bool, int, float, str)):
             return obj
         elif isinstance(obj, (tuple, list)):
-            return [ToDictMixin.dump_obj(x, depth=0, max_depth=max_depth) for x in obj]
+            return [ToDictMixin.dump_obj(x, depth=depth, max_depth=max_depth) for x in obj]
         elif isinstance(obj, dict):
             value_dict = {}
             for key, value in obj.items():
-                value_dict[str(key)] = ToDictMixin.dump_obj(value, depth=0, max_depth=max_depth)
+                value_dict[str(key)] = ToDictMixin.dump_obj(value, depth=depth, max_depth=max_depth)
             return value_dict
 
         if depth >= max_depth or not hasattr(obj, "__dict__"):

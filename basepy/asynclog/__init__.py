@@ -265,6 +265,9 @@ class AsyncLogger(object):
         self.engine = engine or AsyncLoggerEngine()
         self.kwargs = kwargs
 
+    async def init(self, config):
+        await self.engine.init(config)
+
     def add(self, handler, level="DEBUG", log_format=None, queue=False, **kwargs):
         return self.engine.add(handler, level=level, log_format=log_format, queue=queue, **kwargs)
 

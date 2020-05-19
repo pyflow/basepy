@@ -6,7 +6,7 @@ import yaml
 from box import Box
 
 class Settings(object):
-    
+
     __slots__ = ['_fresh', '_store', "_secrets", '_defaults', 'root_path']
 
     def __init__(self, root_path=None, **kwargs):
@@ -14,7 +14,7 @@ class Settings(object):
         self._store = Box(data={}, box_it_up=True, frozen_box=True)
         self._secrets = Box(data={}, box_it_up=True, frozen_box=True)
         self._defaults = kwargs
-        self.root_path = root_path or os.getcwd() 
+        self.root_path = root_path or os.getcwd()
         self.execute_loaders()
 
     def __call__(self, *args, **kwargs):
@@ -41,7 +41,7 @@ class Settings(object):
     @property
     def store(self):
         return self._store
-    
+
     @property
     def secrets(self):
         return self._secrets
@@ -89,7 +89,7 @@ class Settings(object):
                 fpath = os.path.join(root, name)
                 if os.path.exists(fpath) and os.path.isfile(fpath):
                     configs.append(fpath)
-        
+
         def check_secrets_files(root, secrets):
             for name in ['.secrets.toml', '.secrets.yaml', '.secrets.local.toml', '.secrets.local.yaml']:
                 fpath = os.path.join(root, name)
@@ -104,42 +104,36 @@ class Settings(object):
 
         if len(config_files) == 0:
             check_setting_files(root, config_files)
-        
+
         if len(secrets_files) == 0:
             check_secrets_files(root, secrets_files)
-        
+
         configs = map(lambda x: self.load_file(x), config_files)
         config_data = {}
         for data in configs:
             config_data.update(data)
-        
+
         self._store = Box(config_data, box_it_up=True, frozen_box=True)
 
         secrets = map(lambda x: self.load_file(x), secrets_files)
         secrets_data = {}
         for data in secrets:
             secrets_data.update(data)
-        
+
         self._secrets = Box(secrets_data, box_it_up=True, frozen_box=True)
 
-        
+
     def load_file(self, path=None, env=None, silent=True):
         root, ext = os.path.splitext(path)
         if ext == '.toml':
             return self.load_toml(path)
         elif ext == '.yaml':
             return self.load_yaml(path)
-    
+
     def load_toml(self, path):
-        try:
-            return toml.load(path)
-        except:
-            return {}
+        return toml.load(path)
 
     def load_yaml(self, path):
-        try:
-            return yaml.load(path)
-        except:
-            return {}
+        return yaml.load(path)
 
 settings = Settings()

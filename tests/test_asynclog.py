@@ -50,7 +50,6 @@ async def test_log_sync(capsys):
     await asyncio.sleep(0.1)
     captured = capsys.readouterr()
     assert captured.out.endswith("[error]\n")
-    logger.loop_task.cancel()
     logger.clear()
     await asyncio.sleep(0.1)
 

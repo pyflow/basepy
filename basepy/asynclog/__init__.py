@@ -2,7 +2,7 @@
 import time
 import sys
 import asyncio
-from asyncio import Queue
+from asyncio import Queue, QueueEmpty
 import traceback
 import os
 import platform
@@ -209,6 +209,11 @@ class AsyncSyncLogger:
     def log(self, level, message, args, kwargs):
         merged_args = copy(self.kwargs)
         merged_args.update(kwargs)
+        # try:
+        #     task = asyncio.ensure_future(self._log_one(level, message, args, merged_args))
+        # except Exception as ex:
+        #     raise(ex)
+
         if self.loop_task:
             if self.loop_task.done() or self.loop_task.cancelled():
                 exc = self.loop_task.exception()
@@ -223,12 +228,17 @@ class AsyncSyncLogger:
                 raise(ex)
         self.queue.put_nowait([self.name, level, message, args, merged_args])
 
+    async def _log_one(self, level, message, args, kwargs):
+        await self.engine.log(self.name, level, message, args, kwargs)
+
     async def log_loop(self):
         while 1:
             try:
-                task = await self.queue.get()
+                task = self.queue.get_nowait()
                 await self.engine.log(*task)
                 self.queue.task_done()
+            except QueueEmpty as ex:
+                break
             except RuntimeError as ex:
                 _ = ex
 

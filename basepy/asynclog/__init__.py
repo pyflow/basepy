@@ -183,7 +183,7 @@ class AsyncLoggerEngine:
         if len(self.queued_handlers) > 0:
             await self.queue.put(record)
 
-class AsyncSyncLogger:
+class AsyncQueuedLogger:
     def __init__(self, name="", engine=None, **kwargs):
         self.name = name
         self.engine = engine or AsyncLoggerEngine()
@@ -204,15 +204,12 @@ class AsyncSyncLogger:
         name = kwargs.pop('name', '') or self.name
         new_kwargs = copy(self.kwargs)
         new_kwargs.update(kwargs)
-        return AsyncSyncLogger(name, self.engine, **new_kwargs)
+        return AsyncQueuedLogger(name, self.engine, **new_kwargs)
 
     def log(self, level, message, args, kwargs):
         merged_args = copy(self.kwargs)
         merged_args.update(kwargs)
-        # try:
-        #     task = asyncio.ensure_future(self._log_one(level, message, args, merged_args))
-        # except Exception as ex:
-        #     raise(ex)
+        self.queue.put_nowait([self.name, level, message, args, merged_args])
 
         if self.loop_task:
             if self.loop_task.done() or self.loop_task.cancelled():
@@ -226,7 +223,6 @@ class AsyncSyncLogger:
                 self.loop_task = asyncio.ensure_future(self.log_loop())
             except Exception as ex:
                 raise(ex)
-        self.queue.put_nowait([self.name, level, message, args, merged_args])
 
     async def _log_one(self, level, message, args, kwargs):
         await self.engine.log(self.name, level, message, args, kwargs)
@@ -269,6 +265,8 @@ class AsyncSyncLogger:
         self.error(message, *args, exc_info=True, **kwargs)
 
 
+AsyncSyncLogger = AsyncQueuedLogger
+
 class AsyncLogger(object):
     def __init__(self, name="", engine=None, **kwargs):
         self.name = name
@@ -285,7 +283,7 @@ class AsyncLogger(object):
         return self.engine.clear()
 
     def sync(self):
-        return AsyncSyncLogger(self.name, self.engine, **self.kwargs)
+        return AsyncQueuedLogger(self.name, self.engine, **self.kwargs)
 
     def bind(self, **kwargs):
         name = kwargs.pop('name', '') or self.name

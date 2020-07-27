@@ -133,27 +133,87 @@ class AsyncLoggerEngine:
     def __init__(self, **kwargs):
         self.handlers = []
         self.queue = None
+        self.buffer_queue = None
         self.queued_handlers = []
         self.dev_mode = True
+        self.min_levelno = LoggerLevel.CRITICAL
         self.hostname = platform.node()
+        self.queue_task = None
+        self.buffer_queue_task = None
+        self.will_close = False
 
-    async def init(self, config):
-        await self.init_queue()
-        handlers = config['handlers']
-        for handler in handlers:
-            conf = config.get(handler, {}).to_dict()
-            handler_type = conf.pop('handler_type', '')
-            if handler_type not in self.handler_class_map:
-                continue
-            self.add(handler_type, **conf)
+    async def init(self, config=None):
+        if config:
+            handlers = config['handlers']
+            for handler in handlers:
+                conf = config.get(handler, {}).to_dict()
+                handler_type = conf.pop('handler_type', '')
+                if handler_type not in self.handler_class_map:
+                    continue
+                self.add(handler_type, **conf)
+        await self.create_tasks()
 
     async def init_queue(self):
-        self.queue = Queue()
+        self.queue = Queue(maxsize=20000)
+        self.buffer_queue = Queue(maxsize=2000)
 
-    def add(self, handler, level="DEBUG", log_format=None, queue=False, **kwargs):
+    async def create_tasks(self):
+        await self.init_queue()
+        if not self.queue_task:
+            try:
+                self.queue_task = asyncio.ensure_future(self.queue_loop())
+            except Exception as ex:
+                raise(ex)
+
+        if not self.buffer_queue_task:
+            try:
+                self.buffer_queue_task = asyncio.ensure_future(self.buffer_queue_loop())
+            except Exception as ex:
+                raise(ex)
+
+    async def queue_loop(self):
+        while 1:
+            try:
+                if self.will_close:
+                    break
+                if self.queue.empty():
+                    await asyncio.sleep(0.1)
+                    continue
+                record = await self.queue.get()
+                self.queue.task_done()
+                for h in self.queued_handlers:
+                    await h.emit(record)
+            except asyncio.QueueEmpty as ex:
+                await asyncio.sleep(0.1)
+                continue
+            except RuntimeError as ex:
+                _ = ex
+
+    async def buffer_queue_loop(self):
+        while 1:
+            try:
+                if self.will_close:
+                    break
+                if self.buffer_queue.empty():
+                    await asyncio.sleep(0.1)
+                    continue
+                task = await self.buffer_queue.get()
+                self.buffer_queue.task_done()
+                await self.log(*task)
+            except asyncio.QueueEmpty as ex:
+                await asyncio.sleep(0.1)
+                continue
+            except RuntimeError as ex:
+                _ = ex
+
+
+    def add(self, handler, level="INFO", log_format=None, queue=False, **kwargs):
         h_cls = self.handler_class_map.get(handler)
         if not h_cls:
             raise Exception('no handler class for {}'.format(handler))
+        levelno = LoggerLevel.get_levelno(level)
+        if levelno < self.min_levelno:
+            self.min_levelno = levelno
         h = h_cls(format=log_format, queue=queue, level=level, **kwargs)
         if queue:
             self.queued_handlers.append(h)
@@ -170,6 +230,15 @@ class AsyncLoggerEngine:
         queued_handlers = list(filter(lambda x: levelno >= x.levelno, self.queued_handlers))
         return handlers, queued_handlers
 
+    def buffer_log(self, name, level, message, args, kwargs):
+        handlers, queued_handlers = self._filter_handlers(level)
+        if len(handlers) + len(queued_handlers) == 0:
+            return None
+        if self.buffer_queue:
+            self.buffer_queue.put_nowait([name, level, message, args, kwargs])
+        else:
+            raise RuntimeError('logger.init must be called on startup.')
+
     async def log(self, name, level, message, args, kwargs):
         handlers, queued_handlers = self._filter_handlers(level)
         if len(handlers) + len(queued_handlers) == 0:
@@ -181,18 +250,25 @@ class AsyncLoggerEngine:
                 await handler.emit(record)
 
         if len(self.queued_handlers) > 0:
-            await self.queue.put(record)
+            if self.queue:
+                await self.queue.put(record)
+            else:
+                raise RuntimeError('logger.init must be called on startup.')
 
-class AsyncQueuedLogger:
+    async def close(self):
+        self.will_close = True
+        tasks = [self.queue_task, self.buffer_queue_task]
+        await asyncio.gather(*tasks)
+
+class AsyncBufferLogger:
     def __init__(self, name="", engine=None, **kwargs):
         self.name = name
         self.engine = engine or AsyncLoggerEngine()
         self.kwargs = kwargs
-        self.queue = Queue(maxsize=10000)
-        self.loop_task = None
 
     def add(self, handler, level="DEBUG", log_format=None, queue=False, **kwargs):
         return self.engine.add(handler, level=level, log_format=log_format, queue=queue, **kwargs)
+
 
     def clear(self):
         return self.engine.clear()
@@ -200,61 +276,45 @@ class AsyncQueuedLogger:
     def sync(self):
         return self
 
+    def buffer(self):
+        return self
+
     def bind(self, **kwargs):
         name = kwargs.pop('name', '') or self.name
         new_kwargs = copy(self.kwargs)
         new_kwargs.update(kwargs)
-        return AsyncQueuedLogger(name, self.engine, **new_kwargs)
+        return AsyncBufferLogger(name, self.engine, **new_kwargs)
 
     def log(self, level, message, args, kwargs):
         merged_args = copy(self.kwargs)
         merged_args.update(kwargs)
-        self.queue.put_nowait([self.name, level, message, args, merged_args])
+        self.engine.buffer_log(self.name, level, message, args, merged_args)
 
-        if self.loop_task:
-            if self.loop_task.done() or self.loop_task.cancelled():
-                exc = self.loop_task.exception()
-                if exc:
-                    raise(exc)
-                self.loop_task = None
 
-        if not self.loop_task:
-            try:
-                self.loop_task = asyncio.ensure_future(self.log_loop())
-            except Exception as ex:
-                raise(ex)
-
-    async def _log_one(self, level, message, args, kwargs):
-        await self.engine.log(self.name, level, message, args, kwargs)
-
-    async def log_loop(self):
-        while 1:
-            try:
-                task = self.queue.get_nowait()
-                await self.engine.log(*task)
-                self.queue.task_done()
-            except QueueEmpty as ex:
-                break
-            except RuntimeError as ex:
-                _ = ex
+    async def close(self):
+        await self.engine.close()
 
     def debug(self, message, *args, **kwargs):
         if self.engine.dev_mode:
             self.log('DEBUG', message, args, kwargs)
 
     def info(self, message, *args, **kwargs):
+        if self.engine.min_levelno > LoggerLevel.INFO: return
         self.log('INFO', message, args, kwargs)
 
     def warning(self, message, *args, **kwargs):
+        if self.engine.min_levelno > LoggerLevel.WARNING: return
         self.log('WARNING', message, args, kwargs)
 
     def error(self, message, *args, **kwargs):
+        if self.engine.min_levelno > LoggerLevel.ERROR: return
         exc_info = kwargs.pop('exc_info', None)
         if exc_info:
             kwargs['exc_info'] = sys.exc_info()
         self.log('ERROR', message, args, kwargs)
 
     def critical(self, message, *args, **kwargs):
+        if self.engine.min_levelno > LoggerLevel.CRITICAL: return
         exc_info = kwargs.pop('exc_info', None)
         if exc_info:
             kwargs['exc_info'] = sys.exc_info()
@@ -265,7 +325,7 @@ class AsyncQueuedLogger:
         self.error(message, *args, exc_info=True, **kwargs)
 
 
-AsyncSyncLogger = AsyncQueuedLogger
+AsyncSyncLogger = AsyncBufferLogger
 
 class AsyncLogger(object):
     def __init__(self, name="", engine=None, **kwargs):
@@ -273,7 +333,7 @@ class AsyncLogger(object):
         self.engine = engine or AsyncLoggerEngine()
         self.kwargs = kwargs
 
-    async def init(self, config):
+    async def init(self, config=None):
         await self.engine.init(config)
 
     def add(self, handler, level="DEBUG", log_format=None, queue=False, **kwargs):
@@ -283,13 +343,19 @@ class AsyncLogger(object):
         return self.engine.clear()
 
     def sync(self):
-        return AsyncQueuedLogger(self.name, self.engine, **self.kwargs)
+        return AsyncBufferLogger(self.name, self.engine, **self.kwargs)
+
+    def buffer(self):
+        return AsyncBufferLogger(self.name, self.engine, **self.kwargs)
 
     def bind(self, **kwargs):
         name = kwargs.pop('name', '') or self.name
         new_kwargs = copy(self.kwargs)
         new_kwargs.update(kwargs)
         return AsyncLogger(name, self.engine, **new_kwargs)
+
+    async def close(self):
+        await self.engine.close()
 
     async def log(self, level, message, args, kwargs):
         merged_args = copy(self.kwargs)
@@ -301,18 +367,22 @@ class AsyncLogger(object):
             await self.log('DEBUG', message, args, kwargs)
 
     async def info(self, message, *args, **kwargs):
+        if self.engine.min_levelno > LoggerLevel.INFO: return
         await self.log('INFO', message, args, kwargs)
 
     async def warning(self, message, *args, **kwargs):
+        if self.engine.min_levelno > LoggerLevel.WARNING: return
         await self.log('WARNING', message, args, kwargs)
 
     async def error(self, message, *args, **kwargs):
+        if self.engine.min_levelno > LoggerLevel.ERROR: return
         exc_info = kwargs.pop('exc_info', None)
         if exc_info:
             kwargs['exc_info'] = sys.exc_info()
         await self.log('ERROR', message, args, kwargs)
 
     async def critical(self, message, *args, **kwargs):
+        if self.engine.min_levelno > LoggerLevel.CRITICAL: return
         exc_info = kwargs.pop('exc_info', None)
         if exc_info:
             kwargs['exc_info'] = sys.exc_info()

@@ -28,30 +28,42 @@ async def test_log_sync(capsys):
     logger = AsyncLogger("test_log_sync")
     logger.clear()
     logger.add('stdout')
+    await logger.init()
+
     logger = logger.sync()
     logger.info('info')
     await asyncio.sleep(0.1)
     captured = capsys.readouterr()
-    #print(captured.out)
+    print(captured.out)
     assert captured.out.endswith("[info]\n")
+
+    logger = logger.sync()
     logger.debug('debug')
     await asyncio.sleep(0.1)
     captured = capsys.readouterr()
+    print(captured.out)
     assert captured.out.endswith("[debug]\n")
+
+    logger = logger.sync()
     logger.warning('warning')
     await asyncio.sleep(0.1)
     captured = capsys.readouterr()
     assert captured.out.endswith("[warning]\n")
+
+    logger = logger.sync()
     logger.critical('critical')
     await asyncio.sleep(0.1)
     captured = capsys.readouterr()
     assert captured.out.endswith("[critical]\n")
+
+    logger = logger.sync()
     logger.error('error')
     await asyncio.sleep(0.1)
     captured = capsys.readouterr()
     assert captured.out.endswith("[error]\n")
     logger.clear()
     await asyncio.sleep(0.1)
+    await logger.close()
 
 @pytest.mark.asyncio
 async def test_log_level(capsys):

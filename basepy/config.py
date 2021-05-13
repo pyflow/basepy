@@ -3,7 +3,9 @@ import importlib
 import os
 import toml
 import yaml
+from yaml.loader import SafeLoader
 from box import Box
+import json
 
 class Settings(object):
 
@@ -85,13 +87,15 @@ class Settings(object):
         config_files = []
         secrets_files = []
         def check_setting_files(root, configs):
-            for name in ['settings.toml', 'settings.yaml', 'settings.local.toml', 'settings.local.yaml']:
+            for name in ['settings.toml', 'settings.yaml', 'settings.json',
+                    'settings.local.toml', 'settings.local.yaml', 'settings.local.json']:
                 fpath = os.path.join(root, name)
                 if os.path.exists(fpath) and os.path.isfile(fpath):
                     configs.append(fpath)
 
         def check_secrets_files(root, secrets):
-            for name in ['.secrets.toml', '.secrets.yaml', '.secrets.local.toml', '.secrets.local.yaml']:
+            for name in ['.secrets.toml', '.secrets.yaml', '.secrets.json',
+                    '.secrets.local.toml', '.secrets.local.yaml', '.secrets.local.json']:
                 fpath = os.path.join(root, name)
                 if os.path.exists(fpath) and os.path.isfile(fpath):
                     secrets.append(fpath)
@@ -129,11 +133,18 @@ class Settings(object):
             return self.load_toml(path)
         elif ext == '.yaml':
             return self.load_yaml(path)
+        elif ext == '.json':
+            return self.load_json(path)
 
     def load_toml(self, path):
         return toml.load(path)
 
     def load_yaml(self, path):
-        return yaml.load(path)
+        with open(path, 'rb') as f:
+            return yaml.load(f.read(), Loader=SafeLoader)
+
+    def load_json(self, path):
+        with open(path, 'rb') as f:
+            return json.loads(f.read())
 
 settings = Settings()

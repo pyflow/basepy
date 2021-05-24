@@ -18,7 +18,7 @@ class StdoutHandler(BaseHandler):
         if stream is None:
             stream = sys.stdout
         self.stream = stream
-        self.format_str = "[{created}] [{hostname}.{process}] [{level}] [{debuginfo}] [{message}]"
+        self.format_str = "[{created}] [{hostname}.{process}] [{level}] [{name}] [{message}]"
         self.level = level
         self.levelno = LoggerLevel.get_levelno(self.level, 0)
 

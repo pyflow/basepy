@@ -28,7 +28,7 @@ setup(
     include_package_data=False,
     zip_safe=False,
     platforms='any',
-    install_requires=['msgpack', "toml", "python-box<4.0.0", "PyYAML"],
+    install_requires=['msgpack', "toml", "python-box", "PyYAML"],
     extras_require={
         'dev': [
             'pytest>=3',

@@ -8,7 +8,6 @@ import os
 import platform
 import json
 from copy import copy
-from basepy.asynclib.fluent import AsyncFluentSender
 from basepy.asynclib import datagram
 from basepy.common.log import LoggerLevel, LogRecord, BaseHandler
 
@@ -100,35 +99,13 @@ class SocketHandler(BaseHandler):
     def __repr__(self):
         return '<%s [%s:%s(%s)]>' % (self.__class__.__name__, self.host, self.port, self.level)
 
-class FluentHandler(BaseHandler):
-    terminator = '\n'
-    def __init__(self, tag, host="127.0.0.1", port=24224, level="DEBUG", **kwargs):
-        self.tag = tag
-        self.host = host
-        self.port = port
-        self.fluentsender = AsyncFluentSender(tag, host=host, port=port)
-        self.level = level
-        self.levelno = LoggerLevel.get_levelno(self.level, 0)
 
-    def flush(self):
-        pass
-
-    async def emit(self, record):
-        try:
-            await self.fluentsender.emit(record.name, record.to_dict())
-        except Exception:
-            self.handle_error(record)
-
-
-    def __repr__(self):
-        return '<%s %s(%s)>' % (self.__class__.__name__, self.tag, self.level)
 
 
 class AsyncLoggerEngine:
     handler_class_map = {
         'stdout': StdoutHandler,
-        'socket': SocketHandler,
-        'fluent': FluentHandler
+        'socket': SocketHandler
     }
     def __init__(self, **kwargs):
         self.handlers = []
@@ -141,6 +118,12 @@ class AsyncLoggerEngine:
         self.queue_task = None
         self.buffer_queue_task = None
         self.will_close = False
+
+    @classmethod
+    def register_handler(cls, name, handler_cls):
+        if name not in cls.handler_class_map:
+            cls.handler_class_map[name] = handler_cls
+
 
     async def init(self, config=None):
         if config:

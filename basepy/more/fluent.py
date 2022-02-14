@@ -1,13 +1,13 @@
 
 # -*- coding: utf-8 -*-
-
 import errno
 import socket
 import struct
 import time
 import traceback
 import asyncio
-
+from basepy.common.log import LoggerLevel, BaseHandler
+from basepy.asynclog import AsyncLoggerEngine
 import msgpack
 
 
@@ -66,7 +66,6 @@ class AsyncFluentSender(object):
         try:
             bytes_ = self._make_packet(label, timestamp, data)
         except Exception as e:
-            print(traceback.format_exc())
             self.last_error = e
             bytes_ = self._make_packet(label, timestamp,
                                        {"level": "CRITICAL",
@@ -183,3 +182,28 @@ class AsyncFluentSender(object):
             await self.close()
         except Exception as e:  # pragma: no cover
             self.last_error = e
+
+class FluentHandler(BaseHandler):
+    terminator = '\n'
+    def __init__(self, tag, host="127.0.0.1", port=24224, level="DEBUG", **kwargs):
+        self.tag = tag
+        self.host = host
+        self.port = port
+        self.fluentsender = AsyncFluentSender(tag, host=host, port=port)
+        self.level = level
+        self.levelno = LoggerLevel.get_levelno(self.level, 0)
+
+    def flush(self):
+        pass
+
+    async def emit(self, record):
+        try:
+            await self.fluentsender.emit(record.name, record.to_dict())
+        except Exception:
+            self.handle_error(record)
+
+
+    def __repr__(self):
+        return '<%s %s(%s)>' % (self.__class__.__name__, self.tag, self.level)
+
+AsyncLoggerEngine.register_handler('fluent', FluentHandler)

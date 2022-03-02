@@ -1,5 +1,5 @@
 import pytest
-from basepy.asynclib.fluent import AsyncFluentSender
+from basepy.more.fluent import AsyncFluentSender
 
 @pytest.mark.asyncio
 async def test_fluent_1():

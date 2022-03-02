@@ -32,6 +32,7 @@ setup(
     extras_require={
         'dev': [
             'pytest>=3',
+            'mock'
         ],
     },
     classifiers=[
@@ -44,6 +45,8 @@ setup(
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
         'Topic :: Software Development :: Libraries :: Python Modules'
     ],
     python_requires='>=3.6',

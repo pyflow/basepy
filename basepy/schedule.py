@@ -329,7 +329,13 @@ class Job(object):
 
 
     def day(self, number:int):
-        pass
+        self.at_day = timedelta(days=number)
+        self.validate_offset()
+        return self
+    
+    def validate_offset(self):
+        if self.at_offset > self.period:
+            raise ScheduleValueError(f"days({self.at_day}) at time offset ({self.at_time}) must less than every interval {self.period}")
 
 
     def tag(self, *tags: Hashable):
@@ -369,10 +375,13 @@ class Job(object):
         second: Union[str, int]
         hour, minute, second = time_values
         self.at_time = datetime.timedelta(hours=hour, minutes=minute, seconds=second)
+        self.validate_offset()
         return self
 
     def at_delta(self, delta:timedelta):
         self.at_time = delta
+        self.validate_offset()
+        return self
 
     def until(
         self,

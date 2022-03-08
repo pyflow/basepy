@@ -85,7 +85,7 @@ async def test_threaded_exc(threaded_decorator):
     async def _test_threaded_exc():
         number = 90
 
-        done, _ = await asyncio.wait([worker() for _ in range(number)])
+        done, _ = await asyncio.wait([asyncio.create_task(worker()) for _ in range(number)])
 
         for task in done:
             with pytest.raises(Exception):

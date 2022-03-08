@@ -1,4 +1,5 @@
 
+from functools import partial
 import os
 import toml
 from box import Box
@@ -23,8 +24,10 @@ class Missing:
 missing = Missing()
 
 class Settings(object):
+    _ext_list = ['.toml', '.json']
+    _ext_loaders = {}
+    __slots__ = ['_fresh', '_store', "_secrets", '_defaults', 'root_path', '_config_files', '_secrets_files']
 
-    __slots__ = ['_fresh', '_store', "_secrets", '_defaults', 'root_path']
 
     def __init__(self, root_path=None, **kwargs):
         self._fresh = False
@@ -33,8 +36,6 @@ class Settings(object):
         self._defaults = kwargs
         self._config_files = []
         self._secrets_files = []
-        self._ext_list = ['.toml', '.json']
-        self._ext_loaders = {}
         self.root_path = root_path or os.getcwd()
         self.execute_loaders()
 
@@ -72,15 +73,16 @@ class Settings(object):
 
     def values(self):
         return self.store.values()
-    
-    def register_loader(self, ext, loader_func):
+
+    @classmethod
+    def register_loader(cls, ext, loader_func):
         if not callable(loader_func):
             raise Exception('loader_func must be callable, and accept text content as parameter.')
         if not ext.startswith('.'):
             raise Exception('ext must be start with ".", for example, using ".json" instead of "json"')
-        self._ext_loaders[ext] = loader_func
-        if ext not in self._ext_list:
-            self._ext_list.append(ext)
+        cls._ext_loaders[ext] = loader_func
+        if ext not in cls._ext_list:
+            cls._ext_list.append(ext)
 
     def as_dict(self, env=None, internal=False):
         data = self.store.to_dict().copy()
@@ -101,21 +103,31 @@ class Settings(object):
     def execute_loaders(self, env=None, silent=None):
         config_files = []
         secrets_files = []
-        
+
+        def get_file_loader(ext, fpath):
+            if ext == '.toml':
+                return partial(self.load_toml, fpath)
+            elif ext == '.json':
+                return partial(self.load_json, fpath)
+            elif ext in self._ext_loaders:
+                return partial(self.load_with_extloader, fpath, ext)
+            else:
+                raise Exception(f'No available loader for {ext} file')
+
         def check_setting_files(root, configs):
             for prefix in ["settings", "settings.local"]:
-                for name in map(lambda x: "{}{}".format(prefix, x), self._ext_list):
+                for name, ext in map(lambda x: ("{}{}".format(prefix, x), x), self._ext_list):
                     fpath = os.path.join(root, name)
                     if os.path.exists(fpath) and os.path.isfile(fpath):
-                        configs.append(fpath)
+                        configs.append((get_file_loader(ext, fpath), fpath))
                         continue
 
         def check_secrets_files(root, secrets):
             for prefix in [".secrets", ".secrets.local"]:
-                for name in map(lambda x: "{}{}".format(prefix, x), self._ext_list):
+                for name, ext in map(lambda x: ("{}{}".format(prefix, x), x), self._ext_list):
                     fpath = os.path.join(root, name)
                     if os.path.exists(fpath) and os.path.isfile(fpath):
-                        secrets.append(fpath)
+                        secrets.append((get_file_loader(ext, fpath), fpath))
                         continue
 
         root = self.root_path
@@ -130,36 +142,29 @@ class Settings(object):
         if len(secrets_files) == 0:
             check_secrets_files(root, secrets_files)
 
-        configs = map(lambda x: self.load_file(x), config_files)
+        configs = map(lambda x: x[0](), config_files)
         config_data = {}
         for data in configs:
             config_data.update(data)
 
         self._store = Box(config_data, box_it_up=True, frozen_box=True)
-        self._config_files = config_files
+        self._config_files = tuple(map(lambda x: x[1], config_files))
 
-        secrets = map(lambda x: self.load_file(x), secrets_files)
+        secrets = map(lambda x: x[0](), secrets_files)
         secrets_data = {}
         for data in secrets:
             secrets_data.update(data)
 
         self._secrets = Box(secrets_data, box_it_up=True, frozen_box=True)
-        self._secrets_files = secrets_files
+        self._secrets_files = tuple(map(lambda x: x[1], secrets_files))
 
-
-    def load_file(self, path=None, env=None, silent=True):
-        root, ext = os.path.splitext(path)
-        if ext == '.toml':
-            return self.load_toml(path)
-        elif ext == '.json':
-            return self.load_json(path)
 
     def load_toml(self, path):
         return toml.load(path)
 
     def load_with_extloader(self, path, ext):
         with open(path, 'rb') as f:
-            ext_loader = self.ext_loaders[ext]
+            ext_loader = self._ext_loaders[ext]
             return ext_loader(f.read())
 
     def load_json(self, path):

@@ -1,0 +1,13 @@
+log:
+    handlers: ["stdout", "local_fluent"]
+
+    stdout:
+        handler_type: "stdout"
+        level: "debug"
+
+    local_fluent:
+        handler_type: "fluent"
+        host: "127.0.0.1"
+        port: 24224
+        tag: "basepy"
+        level: "info"

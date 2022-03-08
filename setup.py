@@ -32,7 +32,8 @@ setup(
     extras_require={
         'dev': [
             'pytest>=3',
-            'mock'
+            'mock',
+            'pyyaml'
         ],
     },
     classifiers=[

@@ -332,7 +332,7 @@ class Job(object):
         self.at_day = timedelta(days=number)
         self.validate_offset()
         return self
-    
+
     def validate_offset(self):
         if self.at_offset > self.period:
             raise ScheduleValueError(f"days({self.at_day}) at time offset ({self.at_time}) must less than every interval {self.period}")

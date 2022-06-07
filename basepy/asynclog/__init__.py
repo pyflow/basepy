@@ -7,6 +7,7 @@ import traceback
 import os
 import platform
 import json
+import pprint
 from copy import copy
 from basepy.asynclib import datagram
 from basepy.common.log import LoggerLevel, LogRecord, BaseHandler
@@ -17,6 +18,7 @@ class StdoutHandler(BaseHandler):
         if stream is None:
             stream = sys.stdout
         self.stream = stream
+        self.isatty = stream.isatty()
         self.format_str = "[{created}] [{hostname}.{process}] [{level}] [{name}] [{message}]"
         self.level = level
         self.levelno = LoggerLevel.get_levelno(self.level, 0)
@@ -40,8 +42,11 @@ class StdoutHandler(BaseHandler):
         data['created'] = time.strftime("%Y-%m-%d %H:%M:%S %z", time.localtime(data['created']))
         extra_data = data.pop('data', None)
         msg = self.format_str.format(**data)
-        extra = ' '.join(map(lambda x: "[{} = {}]".format(x[0], json.dumps(x[1])), extra_data.items()))
-        if extra:
+        if len(extra_data) > 0:
+            if self.isatty:
+                extra = '{}{}{}'.format(self.terminator, pprint.pformat(extra_data), self.terminator)
+            else:
+                extra = ' '.join(map(lambda x: "[{} = {}]".format(x[0], json.dumps(x[1])), extra_data.items()))
             msg = ' '.join([msg, extra])
         return msg
 
@@ -315,9 +320,12 @@ class AsyncLogger(object):
         self.name = name
         self.engine = engine or AsyncLoggerEngine()
         self.kwargs = kwargs
+        self.inited = False
 
     async def init(self, config=None):
-        await self.engine.init(config)
+        if not self.inited:
+            await self.engine.init(config)
+            self.inited = True
 
     def add(self, handler, level="DEBUG", log_format=None, queue=False, **kwargs):
         return self.engine.add(handler, level=level, log_format=log_format, queue=queue, **kwargs)

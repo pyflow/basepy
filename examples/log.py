@@ -1,6 +1,6 @@
 
 import asyncio
-from basepy.log import logger
+from basepy.asynclog import logger
 
 logger.add("stdout")
 

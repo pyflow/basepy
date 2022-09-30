@@ -26,7 +26,7 @@ class RichConsoleHandler(BaseHandler):
     }
     def __init__(self, stream=None, level="DEBUG", **kwargs):
         self.stream = sys.stdout
-        self.console = Console(file=self.stream, log_time=False)
+        self.console = Console(file=self.stream, log_time=False, log_path=False)
         self.isatty = self.stream.isatty()
         self.level = level
         self.levelno = LoggerLevel.get_levelno(self.level, 0)
@@ -54,10 +54,7 @@ class RichConsoleHandler(BaseHandler):
                 text.append(' | ')
                 text.append(data['message'], style=" " + self.get_level_color(level))
                 self.console.log(text)
-                if data['debuginfo']:
-                    pass
                 if data['data']:
-                    # self.console.log(JSON(json.dumps(data['data'])))
                     pprint(data['data'])
             else:
                 msg = json.dumps(data)

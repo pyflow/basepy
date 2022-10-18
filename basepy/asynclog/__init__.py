@@ -105,8 +105,6 @@ class SocketHandler(BaseHandler):
         return '<%s [%s:%s(%s)]>' % (self.__class__.__name__, self.host, self.port, self.level)
 
 
-
-
 class AsyncLoggerEngine:
     handler_class_map = {
         'stdout': StdoutHandler,

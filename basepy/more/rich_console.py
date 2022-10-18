@@ -7,11 +7,8 @@ from basepy.asynclog import AsyncLoggerEngine, logger
 
 from rich.console import Console
 from rich.text import Text
-from rich.json import JSON
 from rich.pretty import pprint
 from rich.traceback import install
-from rich.pretty import Pretty
-from rich.panel import Panel
 
 
 
@@ -55,7 +52,7 @@ class RichConsoleHandler(BaseHandler):
                 text.append(data['message'], style=" " + self.get_level_color(level))
                 self.console.log(text)
                 if data['data']:
-                    pprint(data['data'])
+                    pprint(data['data'], console=self.console, max_depth=5)
             else:
                 msg = json.dumps(data)
                 stream.write('{}{}'.format(msg, self.terminator))

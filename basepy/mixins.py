@@ -26,6 +26,8 @@ class ToDictMixin:
         dump_dict = {}
 
         for key, value in vars(obj).items():
+            if key.startswith('__'):
+                continue
             if hasattr(value, 'to_dict'):
                 dump_dict[key] = value.to_dict()
             else:

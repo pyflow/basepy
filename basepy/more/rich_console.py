@@ -38,6 +38,9 @@ class RichConsoleHandler(BaseHandler):
         return self.color_map.get(l, '')
 
     async def emit(self, record):
+        self.emit_sync(record)
+
+    def emit_sync(self, record):
         try:
             data = record.to_dict()
             data['created'] = time.strftime("%Y-%m-%d %H:%M:%S %z", time.localtime(data['created']))

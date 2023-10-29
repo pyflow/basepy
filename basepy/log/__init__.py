@@ -5,7 +5,6 @@ import traceback
 import os
 import platform
 import json
-from queue import Queue
 from basepy.common.log import LoggerLevel, LogRecord, BaseHandler
 from basepy.network.connection import BlockingConnectionPool
 import inspect
@@ -112,13 +111,10 @@ class Logger(object):
     def __init__(self, name="", **kwargs):
         self.name = name
         self.handlers = []
-        self.queue = None
-        self.queued_handlers = []
         self.dev_mode = True
         self.hostname = platform.node()
 
     def init(self, config):
-        self.init_queue()
         handlers = config['handlers']
         for handler in handlers:
             conf = config.get(handler, {}).to_dict()
@@ -127,28 +123,21 @@ class Logger(object):
                 continue
             self.add(handler_type, **conf)
 
-    def init_queue(self):
-        self.queue = Queue()
 
-    def add(self, handler, level="DEBUG", log_format=None, queue=False, **kwargs):
+    def add(self, handler, level="DEBUG", log_format=None, **kwargs):
         h_cls = self.handler_class_map.get(handler)
         if not h_cls:
             raise Exception('no handler class for {}'.format(handler))
-        h = h_cls(format=log_format, queue=queue, level=level, **kwargs)
-        if queue:
-            self.queued_handlers.append(h)
-        else:
-            self.handlers.append(h)
+        h = h_cls(format=log_format, level=level, **kwargs)
+        self.handlers.append(h)
 
     def clear(self):
         self.handlers = []
-        self.queued_handlers = []
 
     def _filter_handlers(self, level):
         levelno = LoggerLevel.get_levelno(level)
         handlers = list(filter(lambda x: levelno >= x.levelno, self.handlers))
-        queued_handlers = list(filter(lambda x: levelno >= x.levelno, self.queued_handlers))
-        return handlers, queued_handlers
+        return handlers
 
     def get_debuginfo(self):
         current = inspect.currentframe()
@@ -159,8 +148,8 @@ class Logger(object):
         return 'no-frameinfo'
 
     def log(self, level, message, args, kwargs):
-        handlers, queued_handlers = self._filter_handlers(level)
-        if len(handlers) + len(queued_handlers) == 0:
+        handlers = self._filter_handlers(level)
+        if len(handlers) == 0:
             return None
 
         debuginfo = self.get_debuginfo() if level=="DEBUG" else ":0"
@@ -168,9 +157,6 @@ class Logger(object):
         if len(self.handlers) > 0:
             for handler in self.handlers:
                 handler.emit(record)
-
-        if len(self.queued_handlers) > 0:
-            self.queue.put(record)
 
 
     def debug(self, message, *args, **kwargs):

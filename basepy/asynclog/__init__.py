@@ -2,7 +2,6 @@
 import time
 import sys
 import asyncio
-from asyncio import Queue, QueueEmpty
 import traceback
 import os
 import platform
@@ -29,6 +28,15 @@ class StdoutHandler(BaseHandler):
             self.stream.flush()
 
     async def emit(self, record):
+        try:
+            msg = self.make_message(record)
+            stream = self.stream
+            stream.write(msg + self.terminator)
+            self.flush()
+        except Exception:
+            self.handle_error(record)
+
+    def emit_sync(self, record):
         try:
             msg = self.make_message(record)
             stream = self.stream
@@ -70,6 +78,8 @@ class SocketHandler(BaseHandler):
         self.levelno = LoggerLevel.get_levelno(self.level, 0)
         self.tcp_writer = None
         self.udp_stream = None
+        self.tcp_socket = None
+        self.udp_socket = None
 
     def flush(self):
         pass
@@ -100,6 +110,31 @@ class SocketHandler(BaseHandler):
         except Exception:
             self.handle_error(record)
 
+    def _write_tcp_sync(self, data):
+        if self.tcp_socket is None:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.connect((self.host, self.port))
+                self.tcp_socket = s
+        self.tcp_socket.sendall(data)
+
+    def _write_udp_sync(self, data):
+        if self.udp_socket is None:
+            self.udp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+        self.udp_socket.sendto(data)
+
+    def _write_sync(self, data):
+        if self.connection_type.upper() == "TCP":
+            self._write_tcp_sync(data)
+        elif self.connection_type.upper() == "UDP":
+            self._write_udp_sync(data)
+
+    def emit_sync(self, record):
+        try:
+            msg = "{}{}".format(json.dumps(record.to_dict()), self.terminator)
+            self._write_sync(msg.encode("utf-8"))
+        except Exception:
+            self.handle_error(record)
+
 
     def __repr__(self):
         return '<%s [%s:%s(%s)]>' % (self.__class__.__name__, self.host, self.port, self.level)
@@ -112,15 +147,9 @@ class AsyncLoggerEngine:
     }
     def __init__(self, **kwargs):
         self.handlers = []
-        self.queue = None
-        self.buffer_queue = None
-        self.queued_handlers = []
         self.dev_mode = True
         self.min_levelno = LoggerLevel.CRITICAL
         self.hostname = platform.node()
-        self.queue_task = None
-        self.buffer_queue_task = None
-        self.will_close = False
 
     @classmethod
     def register_handler(cls, name, handler_cls):
@@ -137,97 +166,38 @@ class AsyncLoggerEngine:
                 if handler_type not in self.handler_class_map:
                     continue
                 self.add(handler_type, **conf)
-        await self.create_tasks()
 
-    async def init_queue(self):
-        self.queue = Queue(maxsize=20000)
-        self.buffer_queue = Queue(maxsize=2000)
-
-    async def create_tasks(self):
-        await self.init_queue()
-        if not self.queue_task:
-            try:
-                self.queue_task = asyncio.ensure_future(self.queue_loop())
-            except Exception as ex:
-                raise(ex)
-
-        if not self.buffer_queue_task:
-            try:
-                self.buffer_queue_task = asyncio.ensure_future(self.buffer_queue_loop())
-            except Exception as ex:
-                raise(ex)
-
-    async def queue_loop(self):
-        while 1:
-            try:
-                if self.will_close:
-                    break
-                if self.queue.empty():
-                    await asyncio.sleep(0.1)
-                    continue
-                record = await self.queue.get()
-                self.queue.task_done()
-                for h in self.queued_handlers:
-                    await h.emit(record)
-            except asyncio.QueueEmpty as ex:
-                await asyncio.sleep(0.1)
-                continue
-            except RuntimeError as ex:
-                _ = ex
-
-    async def buffer_queue_loop(self):
-        while 1:
-            try:
-                if self.will_close:
-                    break
-                if self.buffer_queue.empty():
-                    await asyncio.sleep(0.1)
-                    continue
-                task = await self.buffer_queue.get()
-                self.buffer_queue.task_done()
-                await self.log(*task)
-            except asyncio.QueueEmpty as ex:
-                await asyncio.sleep(0.1)
-                continue
-            except RuntimeError as ex:
-                _ = ex
-
-
-    def add(self, handler, level="INFO", log_format=None, queue=False, **kwargs):
+    def add(self, handler, level="INFO", log_format=None, **kwargs):
         h_cls = self.handler_class_map.get(handler)
         if not h_cls:
             raise Exception('no handler class for {}'.format(handler))
         levelno = LoggerLevel.get_levelno(level)
         if levelno < self.min_levelno:
             self.min_levelno = levelno
-        h = h_cls(format=log_format, queue=queue, level=level, **kwargs)
-        if queue:
-            self.queued_handlers.append(h)
-        else:
-            self.handlers.append(h)
+        h = h_cls(format=log_format, level=level, **kwargs)
+        self.handlers.append(h)
 
     def clear(self):
         self.handlers = []
-        self.queued_handlers = []
 
     def _filter_handlers(self, level):
         levelno = LoggerLevel.get_levelno(level)
         handlers = list(filter(lambda x: levelno >= x.levelno, self.handlers))
-        queued_handlers = list(filter(lambda x: levelno >= x.levelno, self.queued_handlers))
-        return handlers, queued_handlers
+        return handlers
 
-    def buffer_log(self, name, level, message, args, kwargs):
-        handlers, queued_handlers = self._filter_handlers(level)
-        if len(handlers) + len(queued_handlers) == 0:
+    def log_sync(self, name, level, message, args, kwargs):
+        handlers = self._filter_handlers(level)
+        if len(handlers) == 0:
             return None
-        if self.buffer_queue:
-            self.buffer_queue.put_nowait([name, level, message, args, kwargs])
-        else:
-            raise RuntimeError('logger.init must be called on startup.')
+        exc_info = kwargs.pop('exc_info', None)
+        record = LogRecord(name, level, message, args, exc_info, None, **kwargs)
+        if len(self.handlers) > 0:
+            for handler in self.handlers:
+                handler.emit_sync(record)
 
     async def log(self, name, level, message, args, kwargs):
-        handlers, queued_handlers = self._filter_handlers(level)
-        if len(handlers) + len(queued_handlers) == 0:
+        handlers = self._filter_handlers(level)
+        if len(handlers) == 0:
             return None
         exc_info = kwargs.pop('exc_info', None)
         record = LogRecord(name, level, message, args, exc_info, None, **kwargs)
@@ -235,25 +205,14 @@ class AsyncLoggerEngine:
             for handler in self.handlers:
                 await handler.emit(record)
 
-        if len(self.queued_handlers) > 0:
-            if self.queue:
-                await self.queue.put(record)
-            else:
-                raise RuntimeError('logger.init must be called on startup.')
-
-    async def close(self):
-        self.will_close = True
-        tasks = [self.queue_task, self.buffer_queue_task]
-        await asyncio.gather(*tasks)
-
-class AsyncBufferLogger:
+class SyncLogger:
     def __init__(self, name="", engine=None, **kwargs):
         self.name = name
         self.engine = engine or AsyncLoggerEngine()
         self.kwargs = kwargs
 
-    def add(self, handler, level="DEBUG", log_format=None, queue=False, **kwargs):
-        return self.engine.add(handler, level=level, log_format=log_format, queue=queue, **kwargs)
+    def add(self, handler, level="DEBUG", log_format=None, **kwargs):
+        return self.engine.add(handler, level=level, log_format=log_format, **kwargs)
 
 
     def clear(self):
@@ -262,23 +221,16 @@ class AsyncBufferLogger:
     def sync(self):
         return self
 
-    def buffer(self):
-        return self
-
     def bind(self, **kwargs):
         name = kwargs.pop('name', '') or self.name
         new_kwargs = copy(self.kwargs)
         new_kwargs.update(kwargs)
-        return AsyncBufferLogger(name, self.engine, **new_kwargs)
+        return SyncLogger(name, self.engine, **new_kwargs)
 
     def log(self, level, message, args, kwargs):
         merged_args = copy(self.kwargs)
         merged_args.update(kwargs)
-        self.engine.buffer_log(self.name, level, message, args, merged_args)
-
-
-    async def close(self):
-        await self.engine.close()
+        self.engine.log_sync(self.name, level, message, args, merged_args)
 
     def debug(self, message, *args, **kwargs):
         if self.engine.dev_mode:
@@ -310,9 +262,6 @@ class AsyncBufferLogger:
         kwargs.pop('exc_info', None)
         self.error(message, *args, exc_info=True, **kwargs)
 
-
-AsyncSyncLogger = AsyncBufferLogger
-
 class AsyncLogger(object):
     def __init__(self, name="", engine=None, **kwargs):
         self.name = name
@@ -325,26 +274,20 @@ class AsyncLogger(object):
             await self.engine.init(config)
             self.inited = True
 
-    def add(self, handler, level="DEBUG", log_format=None, queue=False, **kwargs):
-        return self.engine.add(handler, level=level, log_format=log_format, queue=queue, **kwargs)
+    def add(self, handler, level="DEBUG", log_format=None, **kwargs):
+        return self.engine.add(handler, level=level, log_format=log_format, **kwargs)
 
     def clear(self):
         return self.engine.clear()
 
     def sync(self):
-        return AsyncBufferLogger(self.name, self.engine, **self.kwargs)
-
-    def buffer(self):
-        return AsyncBufferLogger(self.name, self.engine, **self.kwargs)
+        return SyncLogger(self.name, self.engine, **self.kwargs)
 
     def bind(self, **kwargs):
         name = kwargs.pop('name', '') or self.name
         new_kwargs = copy(self.kwargs)
         new_kwargs.update(kwargs)
         return AsyncLogger(name, self.engine, **new_kwargs)
-
-    async def close(self):
-        await self.engine.close()
 
     async def log(self, level, message, args, kwargs):
         merged_args = copy(self.kwargs)

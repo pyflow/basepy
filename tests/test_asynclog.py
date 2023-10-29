@@ -63,7 +63,6 @@ async def test_log_sync(capsys):
     assert captured.out.endswith("[error]\n")
     logger.clear()
     await asyncio.sleep(0.1)
-    await logger.close()
 
 @pytest.mark.asyncio
 async def test_log_level(capsys):

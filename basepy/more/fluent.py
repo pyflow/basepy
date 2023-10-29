@@ -149,7 +149,7 @@ class AsyncFluentSender(object):
                     fut = asyncio.open_unix_connection(self.host[len('unix://'):])
                 else:
                     fut = asyncio.open_connection(self.host, self.port)
-                
+
                 reader, writer = await asyncio.wait_for(fut, timeout = self.timeout)
                 self._reader, self._writer = reader, writer
             except Exception as e:
@@ -201,6 +201,9 @@ class FluentHandler(BaseHandler):
             await self.fluentsender.emit(record.name, record.to_dict())
         except Exception:
             self.handle_error(record)
+
+    def emit_sync(self, record):
+        print('BASEPY WARNING: fluent handler not support sync send.')
 
 
     def __repr__(self):
